@@ -1,1 +1,0 @@
-#Gesionar la deteccion de periferico
