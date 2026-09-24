@@ -1,0 +1,35 @@
+Esto va a tener que realizarse una vez funcione el main.
+
+Primero hay que ejecutar los siguientes comandos para llegar a la direccion.
+
+cd /etc/systemd/system 
+sudo nano SmartGate.service
+
+equivalente a:
+
+sudo nano /etc/systemd/system/smartgate.service
+
+ahi hay que pegar el siguiente codigo:
+
+[Unit]
+Description=Sistema de acceso SmartGate
+After=multi-user.target
+
+[Service]
+Type=simple
+User=admin
+WorkingDirectory=/home/admin/Documents/SmartGate
+ExecStart=/usr/bin/python3 -u /home/admin/Documents/SmartGate/main.py
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+
+Una vez hecho esto hay que ejecutar los siguientes comandos para que se ejecute automaticamente se encienda la placa.
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now smartgate
