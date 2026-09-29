@@ -1,0 +1,18 @@
+# Este archivo contiene valores que pueden cambiar entre instalaciones.
+# No contiene la logica del programa ni el estado actual del porton.
+
+
+#Configuracion de la camara
+camera:
+  # Cero representa normalmente la primera camara conectada a la Raspberry Pi.
+  index: 0
+
+  # Resolucion que se solicitara a la camara.
+  width: 640
+  height: 480
+
+thresholds:
+  # Configuracion de puntajes minimos para ser aprovados por cada modelo, esto se utiliza para ir 
+  detection: 0.85
+  antispoof: 0.90
+  recognition: 0.50
