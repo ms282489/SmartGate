@@ -24,10 +24,10 @@ gpio:
 
   pins:
     final_carrera: 17
-    led_disponible: 18
+    led_activo: 18
     led_procesando: 22
     led_aceptado: 23
-    led_denegado: 24
+    led_rechazado: 24
     abrir_porton: 25
 
   gate:
