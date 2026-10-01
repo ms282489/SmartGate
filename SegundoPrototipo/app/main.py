@@ -1,18 +1,23 @@
 import threading
-
-
-
+from config import yaml
 from Tareas.GPIO import gpio_manager #Tarea creadora de GPIO
 
 
-
-#Crear hilos
-
-gpio_hilo = threading.Thread(target=gpio_manager.gpio_manager, name="gpio_manager")
-
-
+# Importar de yaml
+with open("config/config.yaml", "r") as file:
+    config = yaml.safe_load(file)
+gpio_config = config["gpio"]    
 
 
+# Crear hilos
+gpio_thread = threading.Thread(
+    target=gpio_manager,
+    args=(gpio_config,),
+    name="GPIO"
+)
 
-#Iniciae hilos
-gpio_hilo.start()
+
+
+
+# Iniciar hilos
+gpio_thread.start()
