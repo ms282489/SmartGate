@@ -16,3 +16,19 @@ thresholds:
   detection: 0.85
   antispoof: 0.90
   recognition: 0.50
+
+
+# Configuracion GPIO
+gpio:
+  chip: "/dev/gpiochip0"
+
+  pins:
+    final_carrera: 17
+    led_disponible: 18
+    led_procesando: 22
+    led_aceptado: 23
+    led_denegado: 24
+    abrir_porton: 25
+
+  gate:
+    pulso_tiempo: 500
