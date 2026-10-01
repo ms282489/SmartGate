@@ -1,7 +1,7 @@
 
 #Importo funciones de core
 from core.states import PipelineState
-from core.sinc import Synchronization
+from core.sync import Synchronization
 
 class GestorPipeline:
     """Mantiene el estado general del procesamiento."""
