@@ -4,7 +4,7 @@ import time
 import gpiod
 
 from gpio_comandos import gpio_comando_queue
-from core.sync import gate_closed
+from core.sync import Synchronization
 import comandos_worker
 import fc_worker
 

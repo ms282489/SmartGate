@@ -20,3 +20,30 @@ class PipelineState(Enum):
 
     # Se produjo una situación inesperada y deben normalizarse los recursos.
     CLEANING = auto()
+
+class MensajePipeline(Enum):
+    """Mensajes que los hilos pueden enviar al pipeline principal."""
+
+    # Modelo 1 encontró una cara válida.
+    CANDIDATO_DETECTADO = auto()
+
+    # Modelo 2 determinó que la muestra no pertenece a una cara real.
+    SPOOF_DETECTADO = auto()
+
+    # Modelo 3 no reconoció a la persona.
+    IDENTIDAD_RECHAZADA = auto()
+
+    # Modelo 3 reconoció a una persona autorizada.
+    IDENTIDAD_AUTORIZADA = auto()
+
+    # El final de carrera indicó que el portón comenzó a abrirse.
+    PORTON_ABIERTO = auto()
+
+    # El final de carrera indicó que el portón terminó de cerrar.
+    PORTON_CERRADO = auto()
+
+    # Algún hilo encontró un error.
+    ERROR = auto()
+
+    # Se solicitó finalizar SmartGate.
+    APAGAR = auto()

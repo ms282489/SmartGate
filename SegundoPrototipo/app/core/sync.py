@@ -34,7 +34,7 @@ class Synchronization:
     shutdown: Event
 
 
-def create_synchronization(gate_is_closed: bool) -> Synchronization:
+def create_synchronization() -> Synchronization:
     """Crea todas las señales con un estado inicial conocido."""
 
     synchronization = Synchronization(
@@ -53,11 +53,11 @@ def create_synchronization(gate_is_closed: bool) -> Synchronization:
     synchronization.model2_idle.set()
     synchronization.model3_idle.set()
 
-    # El estado inicial del portón deberá obtenerse posteriormente desde GPIO.
-    if gate_is_closed:
-        synchronization.gate_closed.set()
 
-    # detection_enabled permanece en CLEAR.
-    # El Pipeline Manager decidirá si puede habilitar la primera detección.
 
+    # gate_closed comienza en CLEAR.
+    # GPIO deberá leer el final de carrera y establecer su valor real.
+
+    # detection_enabled también comienza en CLEAR.
+    # El pipeline no puede arrancar hasta conocer el estado del portón.
     return synchronization

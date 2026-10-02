@@ -1,5 +1,5 @@
 import threading
-from config import yaml
+import yaml
 from Tareas.GPIO import gpio_manager #Tarea creadora de GPIO
 
 
