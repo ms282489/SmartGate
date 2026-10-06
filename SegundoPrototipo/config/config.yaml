@@ -31,4 +31,4 @@ gpio:
     abrir_porton: 25
 
   gate:
-    pulso_tiempo: 500
+    pulse_tiempo: 500

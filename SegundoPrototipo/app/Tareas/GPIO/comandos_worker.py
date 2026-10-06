@@ -78,7 +78,7 @@ def command_worker(
             )
 
             # Mantener la salida activa durante el tiempo configurado
-            time.sleep(pulse_tiempo)
+            time.sleep(pulse_tiempo/1000)
 
             # Desactivar nuevamente la salida
             output_request.set_value(
