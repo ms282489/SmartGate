@@ -114,7 +114,10 @@ def deteccion_worker(
                 # Guardar una copia para cada modelo
                 guardar_muestras(
                     rostro.copy(),
-                    rostro.copy(),
+                    (
+                        imagen.copy(),
+                        rostro_detectado.copy(),
+                    ),
                 )
 
                 # Avisar que Buffer 1 está preparado
