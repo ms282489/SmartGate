@@ -85,3 +85,18 @@ def command_worker(
                 pin_abrir,
                 gpiod.line.Value.INACTIVE,
             )
+
+        elif comando == "APAGAR":
+
+            # Apagar todas las salidas
+            output_request.set_values(
+                {
+                    pin_led_activo: gpiod.line.Value.INACTIVE,
+                    pin_led_procesando: gpiod.line.Value.INACTIVE,
+                    pin_led_aceptado: gpiod.line.Value.INACTIVE,
+                    pin_led_rechazado: gpiod.line.Value.INACTIVE,
+                    pin_abrir: gpiod.line.Value.INACTIVE,
+                }
+            )
+
+            break

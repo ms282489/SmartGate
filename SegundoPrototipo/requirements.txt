@@ -1,0 +1,4 @@
+numpy
+PyYAML
+opencv-contrib-python
+gpiod

@@ -11,6 +11,8 @@ RUTA_MODELO = (
     "face_detection_yunet_2023mar.onnx"
 )
 
+ESCALA_ANTISPOOF = 2.7
+
 
 def deteccion_worker(
     config,
@@ -26,109 +28,134 @@ def deteccion_worker(
     alto = camera_config["height"]
     indice_camara = camera_config["index"]
 
-    # ========================================================
-    # CONFIGURAR CÁMARA
-    # ========================================================
-
+    # Abrir y configurar la cámara
     camara = cv2.VideoCapture(indice_camara)
 
     camara.set(cv2.CAP_PROP_FRAME_WIDTH, ancho)
     camara.set(cv2.CAP_PROP_FRAME_HEIGHT, alto)
 
     if not camara.isOpened():
-        cola_mensajes.put(MensajePipeline.ERROR)
+        print("No se pudo abrir la cámara")
+        cola_mensajes.put(MensajePipeline.APAGAR)
         return
 
-    # ========================================================
-    # CARGAR MODELO DE DETECCIÓN
-    # ========================================================
+    # Cargar el modelo
+    try:
+        detector = cv2.FaceDetectorYN.create(
+            RUTA_MODELO,
+            "",
+            (ancho, alto),
+            umbral_deteccion,
+            0.3,
+            5000,
+        )
 
-    detector = cv2.FaceDetectorYN.create(
-        RUTA_MODELO,
-        "",
-        (ancho, alto),
-        umbral_deteccion,
-        0.3,
-        5000,
-    )
-
-    # ========================================================
-    # BUSCAR ROSTROS
-    # ========================================================
+    except Exception as error:
+        print("No se pudo cargar el modelo de detección:", error)
+        camara.release()
+        cola_mensajes.put(MensajePipeline.APAGAR)
+        return
 
     while not sincronizacion.shutdown.is_set():
 
-        # Esperar hasta que el pipeline habilite la detección
+        # Esperar permiso para detectar
         sincronizacion.detection_enabled.wait()
 
         if sincronizacion.shutdown.is_set():
             break
 
-        # Modelo 1 comienza a trabajar
         sincronizacion.model1_idle.clear()
 
-        lectura_correcta, imagen = camara.read()
+        try:
+            lectura_correcta, imagen = camara.read()
 
-        if not lectura_correcta:
-            sincronizacion.model1_idle.set()
-            cola_mensajes.put(MensajePipeline.ERROR)
-            break
+            if not lectura_correcta:
+                raise RuntimeError(
+                    "No se pudo obtener una imagen de la cámara"
+                )
 
-        detector.setInputSize(
-            (imagen.shape[1], imagen.shape[0])
-        )
+            detector.setInputSize(
+                (imagen.shape[1], imagen.shape[0])
+            )
 
-        resultado, rostros = detector.detect(imagen)
+            resultado, rostros = detector.detect(imagen)
 
-        if rostros is not None:
+            if rostros is None:
+                continue
 
-            # Utilizar el primer rostro detectado
             rostro_detectado = rostros[0]
 
             x = int(rostro_detectado[0])
             y = int(rostro_detectado[1])
+
             ancho_rostro = int(rostro_detectado[2])
             alto_rostro = int(rostro_detectado[3])
 
-            # Evitar posiciones fuera de la imagen
-            x = max(0, x)
-            y = max(0, y)
+            # Calcular el centro del rostro
+            centro_x = x + ancho_rostro / 2
+            centro_y = y + alto_rostro / 2
+
+            # Ampliar el recorte para antispoofing
+            ancho_recorte = ancho_rostro * ESCALA_ANTISPOOF
+            alto_recorte = alto_rostro * ESCALA_ANTISPOOF
+
+            inicio_x = max(
+                0,
+                int(centro_x - ancho_recorte / 2),
+            )
+
+            inicio_y = max(
+                0,
+                int(centro_y - alto_recorte / 2),
+            )
 
             fin_x = min(
                 imagen.shape[1],
-                x + ancho_rostro,
+                int(centro_x + ancho_recorte / 2),
             )
 
             fin_y = min(
                 imagen.shape[0],
-                y + alto_rostro,
+                int(centro_y + alto_recorte / 2),
             )
 
-            rostro = imagen[y:fin_y, x:fin_x].copy()
+            rostro = imagen[
+                inicio_y:fin_y,
+                inicio_x:fin_x,
+            ].copy()
 
-            if rostro.size > 0:
+            if rostro.size == 0:
+                continue
 
-                # Bloquear nuevas detecciones
-                sincronizacion.detection_enabled.clear()
+            # Impedir que se acepte otro candidato
+            sincronizacion.detection_enabled.clear()
 
-                # Guardar una copia para cada modelo
-                guardar_muestras(
-                    rostro.copy(),
-                    (
-                        imagen.copy(),
-                        rostro_detectado.copy(),
-                    ),
-                )
+            guardar_muestras(
+                rostro.copy(),
+                (
+                    imagen.copy(),
+                    rostro_detectado.copy(),
+                ),
+            )
 
-                # Avisar que Buffer 1 está preparado
-                sincronizacion.buffer1_ready.set()
+            # Avisar al pipeline antes de iniciar antispoofing
+            cola_mensajes.put(
+                MensajePipeline.CANDIDATO_DETECTADO
+            )
 
-                # Avisar al Pipeline Manager
-                cola_mensajes.put(
-                    MensajePipeline.CANDIDATO_DETECTADO
-                )
+            sincronizacion.buffer1_ready.set()
 
-        # Modelo 1 vuelve a un punto seguro
-        sincronizacion.model1_idle.set()
+        except Exception as error:
+            sincronizacion.detection_enabled.clear()
+
+            print("Error durante la detección:", error)
+
+            cola_mensajes.put(
+                MensajePipeline.ERROR
+            )
+
+        finally:
+            # Modelo 1 siempre vuelve a un punto seguro
+            sincronizacion.model1_idle.set()
 
     camara.release()

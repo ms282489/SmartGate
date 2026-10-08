@@ -33,3 +33,6 @@ def signal_abrir_porton():
     """Solicita generar el pulso de apertura del portón."""
 
     gpio_comando_queue.put("ABRIR")
+
+def signal_apagar():
+    gpio_comando_queue.put("APAGAR")

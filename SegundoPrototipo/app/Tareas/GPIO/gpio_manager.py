@@ -105,6 +105,7 @@ def gpio_manager(
             cola_mensajes,
         ),
         name="GPIO-FC",
+        daemon=True,
     )
 
     command_thread = threading.Thread(
