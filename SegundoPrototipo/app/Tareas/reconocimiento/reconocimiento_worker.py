@@ -9,6 +9,9 @@ from supabase import create_client
 
 from core.buffers import tomar_buffer2
 from core.states import MensajePipeline, ResultadoPipeline
+from Tareas.supabase.rostros_sync import (
+    sincronizar_rostros_supabase,
+)
 
 
 CARPETA_PROYECTO = Path(__file__).resolve().parents[3]
@@ -30,7 +33,10 @@ RUTA_EMBEDDINGS_LOCAL = (
 RUTA_ENV = CARPETA_PROYECTO / "app" / ".env"
 
 
-def cargar_personas_supabase():
+def cargar_personas_supabase(
+    config,
+    reconocedor,
+):
     """Descarga las personas activas y sus embeddings."""
     credenciales = dotenv_values(RUTA_ENV)
 
@@ -61,6 +67,22 @@ def cargar_personas_supabase():
             "password": credenciales["SUPABASE_DEVICE_PASSWORD"],
         }
     )
+
+    # Procesar las fotos nuevas del panel antes de cargar
+    # la galería que utilizará el reconocimiento.
+    try:
+        sincronizar_rostros_supabase(
+            cliente,
+            config,
+            reconocedor,
+        )
+    except Exception as error:
+        # Una falla de Storage no debe impedir utilizar los
+        # embeddings que ya estaban guardados en la base.
+        print(
+            "No se pudieron sincronizar las fotos:",
+            error,
+        )
 
     personas = (
         cliente.table("people")
@@ -168,7 +190,10 @@ def reconocimiento_worker(
 
         try:
             personas_autorizadas = (
-                cargar_personas_supabase()
+                cargar_personas_supabase(
+                    config,
+                    reconocedor,
+                )
             )
             guardar_respaldo_local(
                 personas_autorizadas
