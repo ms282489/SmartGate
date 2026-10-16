@@ -1,6 +1,8 @@
 """Estados posibles del gestor del pipeline."""
 
+from dataclasses import dataclass
 from enum import Enum, auto
+from typing import Optional
 
 
 class PipelineState(Enum):
@@ -47,3 +49,13 @@ class MensajePipeline(Enum):
 
     # Se solicitó finalizar SmartGate.
     APAGAR = auto()
+
+
+@dataclass(frozen=True)
+class ResultadoPipeline:
+    """Mensaje de un modelo junto con sus datos de decisión."""
+
+    mensaje: MensajePipeline
+    persona_id: Optional[str] = None
+    similitud: Optional[float] = None
+    antispoof: Optional[float] = None

@@ -1,20 +1,153 @@
 """Worker encargado del reconocimiento facial."""
 
-import os
+from pathlib import Path
 
 import cv2
 import numpy as np
+from dotenv import dotenv_values
+from supabase import create_client
 
 from core.buffers import tomar_buffer2
-from core.states import MensajePipeline
+from core.states import MensajePipeline, ResultadoPipeline
 
+
+CARPETA_PROYECTO = Path(__file__).resolve().parents[3]
 
 RUTA_MODELO = (
-    "app/Tareas/reconocimiento/"
-    "face_recognition_sface_2021dec.onnx"
+    CARPETA_PROYECTO
+    / "app"
+    / "Tareas"
+    / "reconocimiento"
+    / "face_recognition_sface_2021dec.onnx"
 )
 
-RUTA_EMBEDDINGS = "data/embeddings.npy"
+RUTA_EMBEDDINGS_LOCAL = (
+    CARPETA_PROYECTO
+    / "data"
+    / "embeddings.npy"
+)
+
+RUTA_ENV = CARPETA_PROYECTO / "app" / ".env"
+
+
+def cargar_personas_supabase():
+    """Descarga las personas activas y sus embeddings."""
+    credenciales = dotenv_values(RUTA_ENV)
+
+    variables = (
+        "SUPABASE_URL",
+        "SUPABASE_PUBLISHABLE_KEY",
+        "SUPABASE_DEVICE_EMAIL",
+        "SUPABASE_DEVICE_PASSWORD",
+    )
+    faltantes = [
+        nombre
+        for nombre in variables
+        if not credenciales.get(nombre)
+    ]
+    if faltantes:
+        raise RuntimeError(
+            "Faltan variables en app/.env: "
+            + ", ".join(faltantes)
+        )
+
+    cliente = create_client(
+        credenciales["SUPABASE_URL"],
+        credenciales["SUPABASE_PUBLISHABLE_KEY"],
+    )
+    cliente.auth.sign_in_with_password(
+        {
+            "email": credenciales["SUPABASE_DEVICE_EMAIL"],
+            "password": credenciales["SUPABASE_DEVICE_PASSWORD"],
+        }
+    )
+
+    personas = (
+        cliente.table("people")
+        .select("id,name")
+        .eq("active", True)
+        .execute()
+        .data
+    )
+    filas_embeddings = (
+        cliente.table("face_embeddings")
+        .select("person_id,embedding")
+        .execute()
+        .data
+    )
+
+    nombres_por_id = {
+        persona["id"]: persona["name"]
+        for persona in personas
+    }
+    personas_autorizadas = []
+
+    for fila in filas_embeddings:
+        persona_id = fila["person_id"]
+        if persona_id not in nombres_por_id:
+            continue
+
+        embedding = np.asarray(
+            fila["embedding"],
+            dtype=np.float32,
+        ).reshape(1, -1)
+
+        if embedding.size != 128:
+            print(
+                "Embedding invalido para:",
+                nombres_por_id[persona_id],
+            )
+            continue
+
+        personas_autorizadas.append(
+            {
+                "id": persona_id,
+                "name": nombres_por_id[persona_id],
+                "embedding": embedding,
+            }
+        )
+
+    if not personas_autorizadas:
+        raise RuntimeError(
+            "Supabase no devolvio embeddings autorizados"
+        )
+
+    return personas_autorizadas
+
+
+def guardar_respaldo_local(personas_autorizadas):
+    """Actualiza el respaldo para poder reconocer sin internet."""
+    embeddings = np.vstack(
+        [
+            persona["embedding"]
+            for persona in personas_autorizadas
+        ]
+    ).astype(np.float32)
+    RUTA_EMBEDDINGS_LOCAL.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    np.save(RUTA_EMBEDDINGS_LOCAL, embeddings)
+
+
+def cargar_respaldo_local():
+    """Carga embeddings.npy cuando Supabase no esta disponible."""
+    if not RUTA_EMBEDDINGS_LOCAL.exists():
+        raise RuntimeError(
+            "No existe un respaldo local de embeddings"
+        )
+
+    embeddings = np.load(RUTA_EMBEDDINGS_LOCAL)
+    return [
+        {
+            "id": None,
+            "name": f"Usuario local {indice + 1}",
+            "embedding": embedding
+            .reshape(1, -1)
+            .astype(np.float32),
+        }
+        for indice, embedding in enumerate(embeddings)
+    ]
 
 
 def reconocimiento_worker(
@@ -23,98 +156,120 @@ def reconocimiento_worker(
     cola_mensajes,
 ):
     """Compara el rostro con las personas autorizadas."""
-
     umbral_reconocimiento = (
         config["thresholds"]["recognition"]
     )
 
     try:
-        # Cargar el modelo
         reconocedor = cv2.FaceRecognizerSF.create(
-            RUTA_MODELO,
+            str(RUTA_MODELO),
             "",
         )
 
-        # Cargar los rostros autorizados
-        if os.path.exists(RUTA_EMBEDDINGS):
-            embeddings_autorizados = np.load(
-                RUTA_EMBEDDINGS
+        try:
+            personas_autorizadas = (
+                cargar_personas_supabase()
             )
-        else:
-            embeddings_autorizados = []
+            guardar_respaldo_local(
+                personas_autorizadas
+            )
+            print(
+                "Personas cargadas desde Supabase:",
+                len(personas_autorizadas),
+            )
+        except Exception as error:
+            print(
+                "No se pudo consultar Supabase:",
+                error,
+            )
+            print("Utilizando respaldo local")
+            personas_autorizadas = (
+                cargar_respaldo_local()
+            )
 
     except Exception as error:
-        print("No se pudo iniciar el reconocimiento:", error)
+        print(
+            "No se pudo iniciar el reconocimiento:",
+            error,
+        )
         cola_mensajes.put(MensajePipeline.APAGAR)
         return
 
     while not sincronizacion.shutdown.is_set():
-
-        # Esperar la aprobación del modelo antispoofing
         sincronizacion.recognition_ready.wait()
 
         if sincronizacion.shutdown.is_set():
             break
 
-        # Modelo 3 comienza a trabajar
         sincronizacion.model3_idle.clear()
 
         try:
-            # Tomar y vaciar Buffer 2
             imagen, rostro_detectado = tomar_buffer2()
             sincronizacion.recognition_ready.clear()
 
-            # Alinear el rostro
             rostro_alineado = reconocedor.alignCrop(
                 imagen,
                 rostro_detectado,
             )
-
-            # Generar el embedding
             embedding_actual = reconocedor.feature(
                 rostro_alineado
             )
 
-            identidad_autorizada = False
+            mejor_persona = None
+            mejor_similitud = -1.0
 
-            # Comparar con cada persona autorizada
-            for embedding_guardado in embeddings_autorizados:
-
-                embedding_guardado = (
-                    embedding_guardado
-                    .reshape(1, -1)
-                    .astype(np.float32)
-                )
-
+            for persona in personas_autorizadas:
                 similitud = reconocedor.match(
                     embedding_actual,
-                    embedding_guardado,
+                    persona["embedding"],
                     cv2.FaceRecognizerSF_FR_COSINE,
                 )
 
-                if similitud >= umbral_reconocimiento:
-                    identidad_autorizada = True
-                    break
+                if similitud > mejor_similitud:
+                    mejor_similitud = similitud
+                    mejor_persona = persona
 
-            if identidad_autorizada:
-                cola_mensajes.put(
-                    MensajePipeline.IDENTIDAD_AUTORIZADA
+            if (
+                mejor_persona is not None
+                and mejor_similitud
+                >= umbral_reconocimiento
+            ):
+                print(
+                    "Identidad autorizada:",
+                    mejor_persona["name"],
+                    "- similitud:",
+                    round(mejor_similitud, 3),
                 )
-
-            else:
                 cola_mensajes.put(
-                    MensajePipeline.IDENTIDAD_RECHAZADA
+                    ResultadoPipeline(
+                        mensaje=(
+                            MensajePipeline.IDENTIDAD_AUTORIZADA
+                        ),
+                        persona_id=mejor_persona["id"],
+                        similitud=float(mejor_similitud),
+                    )
+                )
+            else:
+                print(
+                    "Identidad rechazada - similitud:",
+                    round(mejor_similitud, 3),
+                )
+                cola_mensajes.put(
+                    ResultadoPipeline(
+                        mensaje=(
+                            MensajePipeline.IDENTIDAD_RECHAZADA
+                        ),
+                        similitud=float(mejor_similitud),
+                    )
                 )
 
         except Exception as error:
             sincronizacion.recognition_ready.clear()
-
-            print("Error durante el reconocimiento:", error)
-
-            cola_mensajes.put(
-                MensajePipeline.ERROR
+            print(
+                "Error durante el reconocimiento:",
+                error,
             )
+            cola_mensajes.put(MensajePipeline.ERROR)
 
         finally:
-            # Modelo 3 siempre vuelve a un punto seguro
             sincronizacion.model3_idle.set()

@@ -1,4 +1,7 @@
 numpy
 PyYAML
 opencv-contrib-python
-gpiod
+gpiod; sys_platform == "linux"
+pyserial
+supabase
+python-dotenv

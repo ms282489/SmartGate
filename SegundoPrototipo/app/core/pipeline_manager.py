@@ -1,9 +1,12 @@
 """Control del flujo principal del pipeline."""
 
 from queue import Queue
-
 from core.buffers import limpiar_buffers
-from core.states import MensajePipeline, PipelineState
+from core.states import (
+    MensajePipeline,
+    PipelineState,
+    ResultadoPipeline,
+)
 from core.sync import Synchronization
 from Tareas.GPIO.gpio_comandos import (
     signal_abrir_porton,
@@ -12,6 +15,12 @@ from Tareas.GPIO.gpio_comandos import (
     signal_apagar,
     signal_procesando,
     signal_rechazado,
+)
+from Tareas.telemetria.telemetria_worker import (
+    registrar_evento,
+)
+from Tareas.supabase.supabase_worker import (
+    registrar_evento_supabase,
 )
 
 
@@ -65,7 +74,9 @@ def inicializar_pipeline(
 
 def ejecutar_pipeline(
     sincronizacion: Synchronization,
-    cola_mensajes: Queue[MensajePipeline],
+    cola_mensajes: Queue[
+        MensajePipeline | ResultadoPipeline
+    ],
 ) -> PipelineState:
     """Ejecuta el control principal del pipeline."""
 
@@ -73,10 +84,21 @@ def ejecutar_pipeline(
 
     while True:
         try:
-            mensaje = cola_mensajes.get()
+            elemento = cola_mensajes.get()
 
         except KeyboardInterrupt:
-            mensaje = MensajePipeline.APAGAR
+            elemento = MensajePipeline.APAGAR
+
+        # Algunos workers envían solamente un mensaje.
+        # Reconocimiento y antispoofing también pueden enviar
+        # información como persona_id o puntuaciones.
+        if isinstance(elemento, ResultadoPipeline):
+            mensaje = elemento.mensaje
+            resultado = elemento
+
+        else:
+            mensaje = elemento
+            resultado = None
 
         if mensaje is MensajePipeline.APAGAR:
             sincronizacion.shutdown.set()
@@ -110,6 +132,30 @@ def ejecutar_pipeline(
                 sincronizacion
             )
 
+            if mensaje is MensajePipeline.SPOOF_DETECTADO:
+                registrar_evento("SPOOF")
+
+                registrar_evento_supabase(
+                    resultado="spoof",
+                    antispoof=(
+                        resultado.antispoof
+                        if resultado is not None
+                        else None
+                    ),
+                )
+
+            else:
+                registrar_evento("RECHAZADO")
+
+                registrar_evento_supabase(
+                    resultado="denied",
+                    similitud=(
+                        resultado.similitud
+                        if resultado is not None
+                        else None
+                    ),
+                )
+
             signal_rechazado()
 
         elif (
@@ -117,6 +163,22 @@ def ejecutar_pipeline(
             and estado_pipeline is PipelineState.PROCESSING
         ):
             sincronizacion.detection_enabled.clear()
+
+            registrar_evento("APROBADO")
+
+            registrar_evento_supabase(
+                resultado="authorized",
+                persona_id=(
+                    resultado.persona_id
+                    if resultado is not None
+                    else None
+                ),
+                similitud=(
+                    resultado.similitud
+                    if resultado is not None
+                    else None
+                ),
+            )
 
             signal_aceptado()
             signal_abrir_porton()

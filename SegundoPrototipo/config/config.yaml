@@ -14,7 +14,7 @@ camera:
 thresholds:
   # Configuracion de puntajes minimos para ser aprovados por cada modelo, esto se utiliza para ir 
   detection: 0.85
-  antispoof: 0.90
+  antispoof: 0.99
   recognition: 0.50
 
 
@@ -32,3 +32,9 @@ gpio:
 
   gate:
     pulse_tiempo: 500
+
+  # Configuración de telemetría serial
+telemetry:
+  port: "/dev/serial0"
+  baudrate: 115200
+  interval: 60

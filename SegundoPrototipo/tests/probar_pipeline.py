@@ -1,4 +1,4 @@
-"""Pruebas simples del flujo principal sin utilizar hardware."""
+"""Prueba el flujo principal sin utilizar hardware."""
 
 from queue import Queue
 
@@ -6,24 +6,33 @@ from core.pipeline_manager import ejecutar_pipeline
 from core.states import MensajePipeline, PipelineState
 from core.sync import create_synchronization
 from Tareas.GPIO.gpio_comandos import gpio_comando_queue
+from Tareas.telemetria.telemetria_worker import telemetria_queue
 
 
-def vaciar_comandos_gpio():
-    """Devuelve los comandos GPIO pendientes y deja la cola vacía."""
+def vaciar_cola(cola):
+    """Devuelve los elementos pendientes y deja la cola vacía."""
 
-    comandos = []
+    elementos = []
 
-    while not gpio_comando_queue.empty():
-        comandos.append(gpio_comando_queue.get_nowait())
+    while not cola.empty():
+        elementos.append(cola.get_nowait())
 
-    return comandos
+    return elementos
 
 
-def ejecutar_secuencia(mensajes):
-    """Ejecuta una secuencia de mensajes con el portón cerrado."""
+def ejecutar_secuencia(
+    mensajes,
+    porton_cerrado=True,
+):
+    """Ejecuta una secuencia de mensajes del pipeline."""
+
+    vaciar_cola(gpio_comando_queue)
+    vaciar_cola(telemetria_queue)
 
     sincronizacion = create_synchronization()
-    sincronizacion.gate_closed.set()
+
+    if porton_cerrado:
+        sincronizacion.gate_closed.set()
 
     cola_mensajes = Queue()
 
@@ -35,12 +44,13 @@ def ejecutar_secuencia(mensajes):
         cola_mensajes,
     )
 
-    comandos = vaciar_comandos_gpio()
+    comandos = vaciar_cola(gpio_comando_queue)
+    telemetria = vaciar_cola(telemetria_queue)
 
-    return estado, comandos
+    return estado, comandos, telemetria
 
 
-estado, comandos = ejecutar_secuencia(
+estado, comandos, telemetria = ejecutar_secuencia(
     [
         MensajePipeline.CANDIDATO_DETECTADO,
         MensajePipeline.IDENTIDAD_RECHAZADA,
@@ -55,11 +65,32 @@ assert comandos == [
     "RECHAZADO",
     "APAGAR",
 ]
+assert telemetria == ["RECHAZADO"]
 
 print("Prueba de rechazo: correcta")
 
 
-estado, comandos = ejecutar_secuencia(
+estado, comandos, telemetria = ejecutar_secuencia(
+    [
+        MensajePipeline.CANDIDATO_DETECTADO,
+        MensajePipeline.SPOOF_DETECTADO,
+        MensajePipeline.APAGAR,
+    ]
+)
+
+assert estado is PipelineState.IDLE
+assert comandos == [
+    "ACTIVO",
+    "PROCESANDO",
+    "RECHAZADO",
+    "APAGAR",
+]
+assert telemetria == ["SPOOF"]
+
+print("Prueba de spoof: correcta")
+
+
+estado, comandos, telemetria = ejecutar_secuencia(
     [
         MensajePipeline.CANDIDATO_DETECTADO,
         MensajePipeline.IDENTIDAD_AUTORIZADA,
@@ -78,11 +109,12 @@ assert comandos == [
     "ACTIVO",
     "APAGAR",
 ]
+assert telemetria == ["APROBADO"]
 
 print("Prueba de autorización: correcta")
 
 
-estado, comandos = ejecutar_secuencia(
+estado, comandos, telemetria = ejecutar_secuencia(
     [
         MensajePipeline.CANDIDATO_DETECTADO,
         MensajePipeline.ERROR,
@@ -97,6 +129,46 @@ assert comandos == [
     "RECHAZADO",
     "APAGAR",
 ]
+assert telemetria == []
 
 print("Prueba de recuperación de error: correcta")
+
+
+estado, comandos, telemetria = ejecutar_secuencia(
+    [
+        MensajePipeline.CANDIDATO_DETECTADO,
+        MensajePipeline.PORTON_ABIERTO,
+        MensajePipeline.PORTON_CERRADO,
+        MensajePipeline.APAGAR,
+    ]
+)
+
+assert estado is PipelineState.IDLE
+assert comandos == [
+    "ACTIVO",
+    "PROCESANDO",
+    "ACTIVO",
+    "APAGAR",
+]
+assert telemetria == []
+
+print("Prueba de apertura inesperada: correcta")
+
+
+estado, comandos, telemetria = ejecutar_secuencia(
+    [
+        MensajePipeline.PORTON_CERRADO,
+        MensajePipeline.APAGAR,
+    ],
+    porton_cerrado=False,
+)
+
+assert estado is PipelineState.IDLE
+assert comandos == [
+    "ACTIVO",
+    "APAGAR",
+]
+assert telemetria == []
+
+print("Prueba de portón inicialmente abierto: correcta")
 print("Todas las pruebas del pipeline finalizaron correctamente")

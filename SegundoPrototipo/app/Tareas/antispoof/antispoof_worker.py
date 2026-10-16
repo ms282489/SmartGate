@@ -5,7 +5,7 @@ import numpy as np
 
 from core.buffers import tomar_buffer1
 from core.buffers import tomar_buffer2
-from core.states import MensajePipeline
+from core.states import MensajePipeline, ResultadoPipeline
 
 
 RUTA_MODELO = (
@@ -67,7 +67,7 @@ def antispoof_worker(
             valores = np.exp(salida - np.max(salida))
             probabilidades = valores / np.sum(valores)
 
-            puntaje_real = probabilidades[1]
+            puntaje_real = float(probabilidades[1])
 
             if puntaje_real >= umbral_antispoof:
                 sincronizacion.recognition_ready.set()
@@ -77,7 +77,10 @@ def antispoof_worker(
                 tomar_buffer2()
 
                 cola_mensajes.put(
-                    MensajePipeline.SPOOF_DETECTADO
+                    ResultadoPipeline(
+                        mensaje=MensajePipeline.SPOOF_DETECTADO,
+                        antispoof=puntaje_real,
+                    )
                 )
 
         except Exception as error:
