@@ -12,6 +12,7 @@ luego esta el Json que es para guardar localmente los datos
 import json
 import time
 from pathlib import Path
+from threading import Lock
 
 # Empty representa que una cola no recibió elementos durante
 # el tiempo de espera. Queue es una cola segura para usar con hilos.
@@ -63,6 +64,15 @@ RUTA_EVENTOS_PENDIENTES = (
 eventos_supabase_queue = Queue()
 
 
+# Evita llenar la base con detecciones repetidas de la misma persona
+# o del mismo tipo de rechazo mientras permanece frente a la cámara.
+# El primer evento se registra inmediatamente y los repetidos quedan
+# limitados a uno por minuto.
+INTERVALO_MINIMO_EVENTOS = 60
+_ultimo_evento_por_clave = {}
+_eventos_lock = Lock()
+
+
 # ------------------------------------------------------------------
 # FUNCIÓN UTILIZADA POR EL RESTO DEL PROGRAMA
 # ------------------------------------------------------------------
@@ -72,6 +82,7 @@ def registrar_evento_supabase(
     persona_id=None,
     similitud=None,
     antispoof=None,
+    deteccion=None,
 ):
     """
     Prepara un evento y lo coloca en la cola.
@@ -117,6 +128,13 @@ def registrar_evento_supabase(
             if antispoof is not None
             else None
         ),
+
+        # Confianza con la que YuNet detectó el rostro.
+        "detection": (
+            float(deteccion)
+            if deteccion is not None
+            else None
+        ),
     }
 
     # Eliminar los valores None.
@@ -134,10 +152,33 @@ def registrar_evento_supabase(
         if valor is not None
     }
 
+    # Agrupar por resultado y persona. Los rechazos y spoof, que no
+    # tienen persona_id, se limitan independientemente por resultado.
+    clave_evento = (
+        resultado,
+        persona_id,
+    )
+    ahora = time.monotonic()
+
+    with _eventos_lock:
+        ultimo_evento = _ultimo_evento_por_clave.get(
+            clave_evento
+        )
+
+        if (
+            ultimo_evento is not None
+            and ahora - ultimo_evento
+            < INTERVALO_MINIMO_EVENTOS
+        ):
+            return False
+
+        _ultimo_evento_por_clave[clave_evento] = ahora
+
     # Colocar el evento en la cola.
     #
     # Esta operación es rápida y no espera una respuesta de internet.
     eventos_supabase_queue.put(evento)
+    return True
 
 
 # ------------------------------------------------------------------

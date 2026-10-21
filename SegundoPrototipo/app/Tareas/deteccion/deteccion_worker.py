@@ -85,6 +85,13 @@ def deteccion_worker(
 
             rostro_detectado = rostros[0]
 
+            # YuNet entrega la confianza de detección en el último
+            # valor del rostro detectado.
+            sincronizacion.detection_score = float(
+                rostro_detectado[-1]
+            )
+            sincronizacion.antispoof_score = None
+
             x = int(rostro_detectado[0])
             y = int(rostro_detectado[1])
 

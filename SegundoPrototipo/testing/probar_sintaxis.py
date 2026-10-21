@@ -11,7 +11,7 @@ archivos_python = list(
 )
 
 archivos_python.extend(
-    (raiz / "tests").rglob("*.py")
+    (raiz / "testing").rglob("*.py")
 )
 
 archivos_python.append(

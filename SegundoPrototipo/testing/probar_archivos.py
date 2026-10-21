@@ -12,7 +12,6 @@ archivos_necesarios = [
     raiz / "app/Tareas/deteccion/face_detection_yunet_2023mar.onnx",
     raiz / "app/Tareas/antispoof/MiniFASNetV2.onnx",
     raiz / "app/Tareas/reconocimiento/face_recognition_sface_2021dec.onnx",
-    raiz / "data/embeddings.npy",
     raiz / "config/config.yaml",
 ]
 
@@ -20,13 +19,14 @@ for archivo in archivos_necesarios:
     assert archivo.exists(), f"Falta el archivo: {archivo}"
     assert archivo.stat().st_size > 0, f"El archivo está vacío: {archivo}"
 
-embeddings = np.load(
-    raiz / "data/embeddings.npy"
-)
+ruta_embeddings = raiz / "data/embeddings.npy"
+cantidad_rostros = 0
 
-assert embeddings.ndim == 2
-assert len(embeddings) > 0
-assert np.isfinite(embeddings).all()
+if ruta_embeddings.exists():
+    embeddings = np.load(ruta_embeddings)
+    assert embeddings.ndim == 2
+    assert np.isfinite(embeddings).all()
+    cantidad_rostros = len(embeddings)
 
 with open(
     raiz / "config/config.yaml",
@@ -45,5 +45,5 @@ requirements = (
 
 assert "pyserial" in requirements
 
-print("Rostros registrados:", len(embeddings))
+print("Rostros en respaldo local:", cantidad_rostros)
 print("Archivos y configuración: correctos")

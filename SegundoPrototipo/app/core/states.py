@@ -59,3 +59,4 @@ class ResultadoPipeline:
     persona_id: Optional[str] = None
     similitud: Optional[float] = None
     antispoof: Optional[float] = None
+    deteccion: Optional[float] = None

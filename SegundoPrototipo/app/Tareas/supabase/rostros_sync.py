@@ -19,6 +19,11 @@ RUTA_DETECTOR = (
 BUCKET_ROSTROS = "face-images"
 EXTENSIONES_VALIDAS = (".jpg", ".jpeg", ".png", ".webp")
 
+# Las fotografías de registro suelen tener más fondo y el rostro ocupa
+# menos espacio que durante el uso de la cámara. Un umbral independiente
+# evita rechazar fotos válidas sin relajar la detección del pipeline.
+UMBRAL_DETECCION_REGISTRO = 0.65
+
 
 def _listar_imagenes(bucket, persona_id):
     """Devuelve las rutas de las imágenes de una persona."""
@@ -99,7 +104,10 @@ def sincronizar_rostros_supabase(
         str(RUTA_DETECTOR),
         "",
         (320, 320),
-        config["thresholds"]["detection"],
+        min(
+            config["thresholds"]["detection"],
+            UMBRAL_DETECCION_REGISTRO,
+        ),
         0.3,
         5000,
     )

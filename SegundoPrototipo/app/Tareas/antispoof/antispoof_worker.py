@@ -68,6 +68,7 @@ def antispoof_worker(
             probabilidades = valores / np.sum(valores)
 
             puntaje_real = float(probabilidades[1])
+            sincronizacion.antispoof_score = puntaje_real
 
             if puntaje_real >= umbral_antispoof:
                 sincronizacion.recognition_ready.set()
@@ -80,6 +81,9 @@ def antispoof_worker(
                     ResultadoPipeline(
                         mensaje=MensajePipeline.SPOOF_DETECTADO,
                         antispoof=puntaje_real,
+                        deteccion=(
+                            sincronizacion.detection_score
+                        ),
                     )
                 )
 

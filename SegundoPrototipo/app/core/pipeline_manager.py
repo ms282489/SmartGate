@@ -57,6 +57,8 @@ def limpiar_pipeline(
     # Limpiar las señales entre los modelos
     sincronizacion.buffer1_ready.clear()
     sincronizacion.recognition_ready.clear()
+    sincronizacion.detection_score = None
+    sincronizacion.antispoof_score = None
 
 
 def inicializar_pipeline(
@@ -142,6 +144,11 @@ def ejecutar_pipeline(
                         if resultado is not None
                         else None
                     ),
+                    deteccion=(
+                        resultado.deteccion
+                        if resultado is not None
+                        else None
+                    ),
                 )
 
             else:
@@ -151,6 +158,16 @@ def ejecutar_pipeline(
                     resultado="denied",
                     similitud=(
                         resultado.similitud
+                        if resultado is not None
+                        else None
+                    ),
+                    antispoof=(
+                        resultado.antispoof
+                        if resultado is not None
+                        else None
+                    ),
+                    deteccion=(
+                        resultado.deteccion
                         if resultado is not None
                         else None
                     ),
@@ -175,6 +192,16 @@ def ejecutar_pipeline(
                 ),
                 similitud=(
                     resultado.similitud
+                    if resultado is not None
+                    else None
+                ),
+                antispoof=(
+                    resultado.antispoof
+                    if resultado is not None
+                    else None
+                ),
+                deteccion=(
+                    resultado.deteccion
                     if resultado is not None
                     else None
                 ),

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from threading import Event
+from typing import Optional
 
 
 @dataclass
@@ -32,6 +33,11 @@ class Synchronization:
 
     # Solicita a todos los hilos que terminen.
     shutdown: Event
+
+    # Puntajes del candidato que está atravesando el pipeline.
+    # Se expresan en el rango 0.0 a 1.0.
+    detection_score: Optional[float] = None
+    antispoof_score: Optional[float] = None
 
 
 def create_synchronization() -> Synchronization:

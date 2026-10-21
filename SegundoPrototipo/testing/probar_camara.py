@@ -1,10 +1,16 @@
 """Prueba los tres modelos utilizando la cámara de la Mac."""
 
+import time
 from pathlib import Path
 
 import cv2
 import numpy as np
 import yaml
+
+from Tareas.reconocimiento.reconocimiento_worker import (
+    cargar_personas_supabase,
+    crear_cliente_supabase,
+)
 
 
 raiz = Path(__file__).resolve().parents[1]
@@ -22,6 +28,12 @@ umbrales = config["thresholds"]
 ancho = camera_config["width"]
 alto = camera_config["height"]
 indice_camara = camera_config["index"]
+
+# Durante esta prueba el panel web puede seguir modificando personas
+# y fotografías. Las activaciones se consultan con frecuencia y las
+# fotos se procesan cada pocos segundos.
+INTERVALO_ACTUALIZACION_ACCESOS = 2
+INTERVALO_SINCRONIZACION_FOTOS = 10
 
 detector = cv2.FaceDetectorYN.create(
     str(
@@ -50,9 +62,51 @@ reconocedor = cv2.FaceRecognizerSF.create(
     "",
 )
 
-embeddings = np.load(
-    raiz / "data/embeddings.npy"
+
+def cargar_galeria(
+    cliente=None,
+    sincronizar_fotos=True,
+):
+    """Carga desde Supabase los embeddings de personas activas."""
+
+    if cliente is None:
+        cliente = crear_cliente_supabase()
+
+    personas = cargar_personas_supabase(
+        config,
+        reconocedor,
+        cliente=cliente,
+        sincronizar_fotos=sincronizar_fotos,
+    )
+
+    return cliente, personas
+
+
+try:
+    cliente_supabase, personas_autorizadas = cargar_galeria(
+        sincronizar_fotos=True,
+    )
+
+    print(
+        "Embeddings activos cargados desde Supabase:",
+        len(personas_autorizadas),
+    )
+
+except Exception as error:
+    raise RuntimeError(
+        "No se pudieron cargar los embeddings activos desde "
+        f"Supabase: {error}"
+    ) from error
+
+estado_supabase = (
+    "SUPABASE: "
+    f"{len(personas_autorizadas)} EMBEDDINGS ACTIVOS"
 )
+color_supabase = (0, 255, 0)
+
+ahora = time.monotonic()
+ultima_actualizacion_accesos = ahora
+ultima_sincronizacion_fotos = ahora
 
 camara = cv2.VideoCapture(indice_camara)
 camara.set(cv2.CAP_PROP_FRAME_WIDTH, ancho)
@@ -73,6 +127,62 @@ try:
             raise RuntimeError(
                 "No se pudo obtener una imagen de la cámara"
             )
+
+        ahora = time.monotonic()
+        debe_actualizar_accesos = (
+            ahora - ultima_actualizacion_accesos
+            >= INTERVALO_ACTUALIZACION_ACCESOS
+        )
+        debe_sincronizar_fotos = (
+            ahora - ultima_sincronizacion_fotos
+            >= INTERVALO_SINCRONIZACION_FOTOS
+        )
+
+        if debe_actualizar_accesos or debe_sincronizar_fotos:
+            ultima_actualizacion_accesos = ahora
+
+            if debe_sincronizar_fotos:
+                ultima_sincronizacion_fotos = ahora
+
+            try:
+                cantidad_anterior = len(personas_autorizadas)
+
+                (
+                    cliente_supabase,
+                    personas_actualizadas,
+                ) = cargar_galeria(
+                    cliente=cliente_supabase,
+                    sincronizar_fotos=(
+                        debe_sincronizar_fotos
+                    ),
+                )
+
+                personas_autorizadas = personas_actualizadas
+                cantidad_actual = len(personas_autorizadas)
+
+                estado_supabase = (
+                    "SUPABASE: "
+                    f"{cantidad_actual} EMBEDDINGS ACTIVOS"
+                )
+                color_supabase = (0, 255, 0)
+
+                if cantidad_actual != cantidad_anterior:
+                    print(
+                        "Galería actualizada desde Supabase:",
+                        cantidad_actual,
+                        "embeddings activos",
+                    )
+
+            except Exception as error:
+                # Mantener la última galería válida y volver a crear
+                # la conexión en el siguiente intento.
+                cliente_supabase = None
+                estado_supabase = "SUPABASE: ERROR DE SINCRONIZACION"
+                color_supabase = (0, 0, 255)
+                print(
+                    "No se pudo actualizar Supabase:",
+                    error,
+                )
 
         detector.setInputSize(
             (imagen.shape[1], imagen.shape[0])
@@ -185,14 +295,11 @@ try:
                         rostro_alineado
                     )
 
-                    mejor_similitud = -1.0
+                    mejor_similitud = None
+                    mejor_persona = None
 
-                    for embedding_guardado in embeddings:
-                        embedding_guardado = (
-                            embedding_guardado
-                            .reshape(1, -1)
-                            .astype(np.float32)
-                        )
+                    for persona in personas_autorizadas:
+                        embedding_guardado = persona["embedding"]
 
                         similitud = reconocedor.match(
                             embedding_actual,
@@ -200,25 +307,38 @@ try:
                             cv2.FaceRecognizerSF_FR_COSINE,
                         )
 
-                        mejor_similitud = max(
-                            mejor_similitud,
-                            similitud,
-                        )
+                        if (
+                            mejor_similitud is None
+                            or similitud > mejor_similitud
+                        ):
+                            mejor_similitud = float(similitud)
+                            mejor_persona = persona
 
-                    if mejor_similitud >= umbrales["recognition"]:
+                    if (
+                        mejor_persona is not None
+                        and mejor_similitud is not None
+                        and mejor_similitud
+                        >= umbrales["recognition"]
+                    ):
                         estado_reconocimiento = (
-                            "RECONOCIMIENTO: APROBADO "
-                            f"{mejor_similitud:.2f}"
+                            "RECONOCIMIENTO: APROBADO - "
+                            f"{mejor_persona['name']} "
+                            f"{mejor_similitud * 100:.1f}%"
                         )
                         color_reconocimiento = (0, 255, 0)
                         resultado_final = "RESULTADO: AUTORIZADO"
                         color_resultado = (0, 255, 0)
 
                     else:
-                        estado_reconocimiento = (
-                            "RECONOCIMIENTO: RECHAZADO "
-                            f"{mejor_similitud:.2f}"
-                        )
+                        if mejor_similitud is None:
+                            estado_reconocimiento = (
+                                "RECONOCIMIENTO: SIN EMBEDDINGS ACTIVOS"
+                            )
+                        else:
+                            estado_reconocimiento = (
+                                "RECONOCIMIENTO: RECHAZADO "
+                                f"{mejor_similitud * 100:.1f}%"
+                            )
                         color_reconocimiento = (0, 0, 255)
                         resultado_final = "RESULTADO: RECHAZADO"
                         color_resultado = (0, 0, 255)
@@ -235,6 +355,7 @@ try:
             )
 
         estados = [
+            (estado_supabase, color_supabase),
             (estado_deteccion, color_deteccion),
             (estado_antispoof, color_antispoof),
             (estado_reconocimiento, color_reconocimiento),

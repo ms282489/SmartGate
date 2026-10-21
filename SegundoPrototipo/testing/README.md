@@ -5,7 +5,7 @@ Estas pruebas comprueban las partes del programa que no necesitan una Raspberry 
 Desde la carpeta `SegundoPrototipo`, ejecutar:
 
 ```bash
-python3 tests/ejecutar_pruebas.py
+python3 testing/ejecutar_pruebas.py
 ```
 
 Se comprueba:
@@ -26,9 +26,14 @@ Estas pruebas no comprueban la cámara, los pines GPIO, el puerto serial físico
 Para probar detección, antispoofing y reconocimiento con la cámara:
 
 ```bash
-PYTHONPATH=app python3 tests/probar_camara.py
+PYTHONPATH=app python3 testing/probar_camara.py
 ```
 
 macOS puede solicitar permiso para que la terminal utilice la cámara. La ventana se cierra presionando `Q` o `Esc`.
+
+Mientras la ventana está abierta, la prueba actualiza desde Supabase
+las personas activas cada 2 segundos y procesa las fotografías nuevas
+cada 10 segundos. El estado de la conexión y la cantidad de embeddings
+activos aparecen sobre la imagen.
 
 Esta prueba no se inicia desde `ejecutar_pruebas.py` porque necesita intervención del usuario y mantiene una ventana abierta.
