@@ -1,0 +1,9 @@
+numpy
+PyYAML
+opencv-contrib-python
+# Picamera2 se instala con apt en Raspberry Pi OS. No existe como
+# paquete PyPI independiente; ver INSTALACION_RASPBERRY.md.
+gpiod; sys_platform == "linux"
+pyserial
+supabase
+python-dotenv
