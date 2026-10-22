@@ -275,9 +275,15 @@ def reconocimiento_worker(
             >= INTERVALO_SINCRONIZACION_ROSTROS
         )
 
+        # Una cara ya capturada tiene prioridad sobre cualquier acceso
+        # de red. La galería solamente se actualiza cuando este worker
+        # está libre, evitando demoras antes del reconocimiento.
         if (
-            debe_actualizar_accesos
-            or debe_sincronizar_rostros
+            not rostro_disponible
+            and (
+                debe_actualizar_accesos
+                or debe_sincronizar_rostros
+            )
         ):
             # El estado active se consulta cada pocos segundos. Las
             # fotos se procesan con menor frecuencia porque requieren

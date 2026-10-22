@@ -2,6 +2,8 @@
 
 import time
 from pathlib import Path
+from queue import Empty, Queue
+from threading import Thread
 
 import cv2
 import numpy as np
@@ -62,19 +64,33 @@ reconocedor = cv2.FaceRecognizerSF.create(
     "",
 )
 
+# La sincronización utiliza su propia instancia porque los objetos de
+# OpenCV no deben compartirse simultáneamente entre dos hilos.
+reconocedor_sincronizacion = cv2.FaceRecognizerSF.create(
+    str(
+        raiz
+        / "app/Tareas/reconocimiento/face_recognition_sface_2021dec.onnx"
+    ),
+    "",
+)
+
 
 def cargar_galeria(
     cliente=None,
     sincronizar_fotos=True,
+    reconocedor_galeria=None,
 ):
     """Carga desde Supabase los embeddings de personas activas."""
 
     if cliente is None:
         cliente = crear_cliente_supabase()
 
+    if reconocedor_galeria is None:
+        reconocedor_galeria = reconocedor
+
     personas = cargar_personas_supabase(
         config,
-        reconocedor,
+        reconocedor_galeria,
         cliente=cliente,
         sincronizar_fotos=sincronizar_fotos,
     )
@@ -108,6 +124,30 @@ ahora = time.monotonic()
 ultima_actualizacion_accesos = ahora
 ultima_sincronizacion_fotos = ahora
 
+# El hilo secundario deja acá la nueva galería o el error ocurrido. Una
+# sola tarea puede estar activa para no acumular consultas a Supabase.
+cola_sincronizacion = Queue(maxsize=1)
+sincronizacion_en_curso = False
+
+
+def actualizar_galeria_en_segundo_plano(
+    cliente,
+    sincronizar_fotos,
+):
+    """Consulta Supabase en otro hilo y devuelve el resultado por cola."""
+
+    try:
+        resultado = cargar_galeria(
+            cliente=cliente,
+            sincronizar_fotos=sincronizar_fotos,
+            reconocedor_galeria=reconocedor_sincronizacion,
+        )
+        cola_sincronizacion.put((True, resultado))
+
+    except Exception as error:
+        cola_sincronizacion.put((False, error))
+
+
 camara = cv2.VideoCapture(indice_camara)
 camara.set(cv2.CAP_PROP_FRAME_WIDTH, ancho)
 camara.set(cv2.CAP_PROP_FRAME_HEIGHT, alto)
@@ -138,51 +178,73 @@ try:
             >= INTERVALO_SINCRONIZACION_FOTOS
         )
 
-        if debe_actualizar_accesos or debe_sincronizar_fotos:
+        # get_nowait permite comprobar si terminó la consulta sin
+        # detener la captura ni la actualización de la ventana.
+        try:
+            sincronizacion_correcta, resultado_sincronizacion = (
+                cola_sincronizacion.get_nowait()
+            )
+            sincronizacion_en_curso = False
+
+            if not sincronizacion_correcta:
+                raise resultado_sincronizacion
+
+            cantidad_anterior = len(personas_autorizadas)
+            (
+                cliente_supabase,
+                personas_autorizadas,
+            ) = resultado_sincronizacion
+            cantidad_actual = len(personas_autorizadas)
+
+            estado_supabase = (
+                "SUPABASE: "
+                f"{cantidad_actual} EMBEDDINGS ACTIVOS"
+            )
+            color_supabase = (0, 255, 0)
+
+            if cantidad_actual != cantidad_anterior:
+                print(
+                    "Galería actualizada desde Supabase:",
+                    cantidad_actual,
+                    "embeddings activos",
+                )
+
+        except Empty:
+            pass
+
+        except Exception as error:
+            cliente_supabase = None
+            estado_supabase = "SUPABASE: ERROR DE SINCRONIZACION"
+            color_supabase = (0, 0, 255)
+            print(
+                "No se pudo actualizar Supabase:",
+                error,
+            )
+
+        # Iniciar como máximo una sincronización en segundo plano. La
+        # cámara continúa procesando cuadros mientras llega la respuesta.
+        if (
+            not sincronizacion_en_curso
+            and (
+                debe_actualizar_accesos
+                or debe_sincronizar_fotos
+            )
+        ):
             ultima_actualizacion_accesos = ahora
 
             if debe_sincronizar_fotos:
                 ultima_sincronizacion_fotos = ahora
 
-            try:
-                cantidad_anterior = len(personas_autorizadas)
-
-                (
+            sincronizacion_en_curso = True
+            Thread(
+                target=actualizar_galeria_en_segundo_plano,
+                args=(
                     cliente_supabase,
-                    personas_actualizadas,
-                ) = cargar_galeria(
-                    cliente=cliente_supabase,
-                    sincronizar_fotos=(
-                        debe_sincronizar_fotos
-                    ),
-                )
-
-                personas_autorizadas = personas_actualizadas
-                cantidad_actual = len(personas_autorizadas)
-
-                estado_supabase = (
-                    "SUPABASE: "
-                    f"{cantidad_actual} EMBEDDINGS ACTIVOS"
-                )
-                color_supabase = (0, 255, 0)
-
-                if cantidad_actual != cantidad_anterior:
-                    print(
-                        "Galería actualizada desde Supabase:",
-                        cantidad_actual,
-                        "embeddings activos",
-                    )
-
-            except Exception as error:
-                # Mantener la última galería válida y volver a crear
-                # la conexión en el siguiente intento.
-                cliente_supabase = None
-                estado_supabase = "SUPABASE: ERROR DE SINCRONIZACION"
-                color_supabase = (0, 0, 255)
-                print(
-                    "No se pudo actualizar Supabase:",
-                    error,
-                )
+                    debe_sincronizar_fotos,
+                ),
+                daemon=True,
+                name="SincronizacionSupabase",
+            ).start()
 
         detector.setInputSize(
             (imagen.shape[1], imagen.shape[0])

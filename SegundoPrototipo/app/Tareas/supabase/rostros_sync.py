@@ -24,6 +24,11 @@ EXTENSIONES_VALIDAS = (".jpg", ".jpeg", ".png", ".webp")
 # evita rechazar fotos válidas sin relajar la detección del pipeline.
 UMBRAL_DETECCION_REGISTRO = 0.65
 
+# El panel puede recibir fotos de muchos megapíxeles. YuNet obtiene
+# landmarks más estables si primero se reduce la imagen conservando su
+# proporción. alignCrop normaliza después el rostro para SFace.
+LADO_MAXIMO_REGISTRO = 1280
+
 
 def _listar_imagenes(bucket, persona_id):
     """Devuelve las rutas de las imágenes de una persona."""
@@ -66,6 +71,19 @@ def _generar_embedding(
 
     if imagen is None:
         raise ValueError("La imagen no se pudo decodificar")
+
+    lado_mayor = max(imagen.shape[:2])
+
+    if lado_mayor > LADO_MAXIMO_REGISTRO:
+        # INTER_AREA conserva mejor los detalles al reducir una foto.
+        escala = LADO_MAXIMO_REGISTRO / lado_mayor
+        imagen = cv2.resize(
+            imagen,
+            None,
+            fx=escala,
+            fy=escala,
+            interpolation=cv2.INTER_AREA,
+        )
 
     detector.setInputSize(
         (imagen.shape[1], imagen.shape[0])
