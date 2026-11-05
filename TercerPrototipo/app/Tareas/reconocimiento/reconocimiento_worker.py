@@ -25,6 +25,7 @@ def reconocimiento_worker(
     config,
     sincronizacion,
     cola_mensajes,
+    vista_camara=None,
 ):
     """Compara el rostro con las personas autorizadas."""
     umbral_reconocimiento = (
@@ -101,6 +102,12 @@ def reconocimiento_worker(
                     "- similitud:",
                     f"{mejor_similitud * 100:.1f}%",
                 )
+                if vista_camara is not None:
+                    vista_camara.actualizar_reconocimiento(
+                        mejor_persona["name"],
+                        mejor_similitud,
+                        True,
+                    )
                 cola_mensajes.put(
                     ResultadoPipeline(
                         mensaje=(
@@ -126,6 +133,12 @@ def reconocimiento_worker(
                     print(
                         "Identidad rechazada - similitud:",
                         f"{mejor_similitud * 100:.1f}%",
+                    )
+                if vista_camara is not None:
+                    vista_camara.actualizar_reconocimiento(
+                        None,
+                        mejor_similitud,
+                        False,
                     )
                 cola_mensajes.put(
                     ResultadoPipeline(

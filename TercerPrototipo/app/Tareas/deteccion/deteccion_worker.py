@@ -93,6 +93,8 @@ def deteccion_worker(
             resultado, rostros = detector.detect(imagen)
 
             if rostros is None:
+                if vista_camara is not None:
+                    vista_camara.actualizar_deteccion()
                 continue
 
             rostro_detectado = rostros[0]
@@ -103,6 +105,12 @@ def deteccion_worker(
                 rostro_detectado[-1]
             )
             sincronizacion.antispoof_score = None
+
+            if vista_camara is not None:
+                vista_camara.actualizar_deteccion(
+                    rostro_detectado,
+                    sincronizacion.detection_score,
+                )
 
             x = int(rostro_detectado[0])
             y = int(rostro_detectado[1])

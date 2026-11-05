@@ -57,6 +57,7 @@ print(
 sincronizacion = create_synchronization()
 cola_mensajes = Queue()
 vista_camara = VistaCamaraCompartida()
+vista_camara.actualizar_supabase(False, len(personas_locales))
 
 
 def solicitar_apagado(_numero_senal=None, _frame=None):
@@ -98,6 +99,7 @@ antispoof_thread = Thread(
         config,
         sincronizacion,
         cola_mensajes,
+        vista_camara,
     ),
     name="Antispoof",
 )
@@ -110,6 +112,7 @@ reconocimiento_thread = Thread(
         config,
         sincronizacion,
         cola_mensajes,
+        vista_camara,
     ),
     name="Reconocimiento",
 )
@@ -144,6 +147,7 @@ galeria_thread = Thread(
     args=(
         config,
         sincronizacion,
+        vista_camara,
     ),
     name="GaleriaSupabase",
 )

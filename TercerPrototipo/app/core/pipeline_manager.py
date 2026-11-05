@@ -38,6 +38,22 @@ def actualizar_vista(vista_camara, texto, color):
         vista_camara.actualizar_estado(texto, color)
 
 
+def preparar_vista(vista_camara):
+    """Reinicia las líneas de los modelos para el siguiente intento."""
+
+    if vista_camara is None:
+        return
+
+    if hasattr(vista_camara, "preparar_busqueda"):
+        vista_camara.preparar_busqueda()
+    else:
+        # Compatibilidad con vistas mínimas usadas en las pruebas.
+        vista_camara.actualizar_estado(
+            "RESULTADO: ESPERANDO",
+            COLOR_ESPERA,
+        )
+
+
 def habilitar_deteccion(
     sincronizacion: Synchronization,
 ) -> PipelineState:
@@ -109,15 +125,11 @@ def ejecutar_pipeline(
     estado_pipeline = inicializar_pipeline(sincronizacion)
 
     if estado_pipeline is PipelineState.IDLE:
-        actualizar_vista(
-            vista_camara,
-            "BUSCANDO ROSTRO",
-            COLOR_ACTIVO,
-        )
+        preparar_vista(vista_camara)
     else:
         actualizar_vista(
             vista_camara,
-            "ESPERANDO CIERRE DEL PORTON",
+            "RESULTADO: ESPERANDO CIERRE DEL PORTON",
             COLOR_ESPERA,
         )
 
@@ -142,7 +154,7 @@ def ejecutar_pipeline(
         if mensaje is MensajePipeline.APAGAR:
             actualizar_vista(
                 vista_camara,
-                "APAGANDO SMARTGATE",
+                "RESULTADO: APAGANDO SMARTGATE",
                 COLOR_ESPERA,
             )
             sincronizacion.shutdown.set()
@@ -166,7 +178,7 @@ def ejecutar_pipeline(
             estado_pipeline = PipelineState.PROCESSING
             actualizar_vista(
                 vista_camara,
-                "PROCESANDO ROSTRO",
+                "RESULTADO: PROCESANDO",
                 COLOR_PROCESANDO,
             )
 
@@ -193,7 +205,7 @@ def ejecutar_pipeline(
                         else None
                     ),
                 )
-                texto_resultado = "SPOOF DETECTADO"
+                texto_resultado = "RESULTADO: SPOOF"
 
             else:
                 registrar_evento("RECHAZADO")
@@ -219,11 +231,11 @@ def ejecutar_pipeline(
 
                 if resultado is not None and resultado.similitud is not None:
                     texto_resultado = (
-                        "ACCESO RECHAZADO "
+                        "RESULTADO: RECHAZADO "
                         f"{resultado.similitud * 100:.1f}%"
                     )
                 else:
-                    texto_resultado = "ACCESO RECHAZADO"
+                    texto_resultado = "RESULTADO: RECHAZADO"
 
             signal_rechazado()
             actualizar_vista(
@@ -241,11 +253,7 @@ def ejecutar_pipeline(
 
             if modo_solo_camara:
                 signal_activo()
-                actualizar_vista(
-                    vista_camara,
-                    "BUSCANDO ROSTRO",
-                    COLOR_ACTIVO,
-                )
+                preparar_vista(vista_camara)
 
         elif (
             mensaje is MensajePipeline.IDENTIDAD_AUTORIZADA
@@ -283,11 +291,11 @@ def ejecutar_pipeline(
 
             if resultado is not None and resultado.similitud is not None:
                 texto_resultado = (
-                    "ACCESO AUTORIZADO "
+                    "RESULTADO: AUTORIZADO "
                     f"{resultado.similitud * 100:.1f}%"
                 )
             else:
-                texto_resultado = "ACCESO AUTORIZADO"
+                texto_resultado = "RESULTADO: AUTORIZADO"
 
             actualizar_vista(
                 vista_camara,
@@ -301,11 +309,7 @@ def ejecutar_pipeline(
                     sincronizacion
                 )
                 signal_activo()
-                actualizar_vista(
-                    vista_camara,
-                    "BUSCANDO ROSTRO",
-                    COLOR_ACTIVO,
-                )
+                preparar_vista(vista_camara)
             else:
                 signal_abrir_porton()
                 estado_pipeline = PipelineState.WAIT_GATE_OPEN
@@ -313,7 +317,7 @@ def ejecutar_pipeline(
         elif mensaje is MensajePipeline.PORTON_ABIERTO:
             actualizar_vista(
                 vista_camara,
-                "PORTON ABIERTO",
+                "RESULTADO: PORTON ABIERTO",
                 COLOR_ESPERA,
             )
             sincronizacion.gate_closed.clear()
@@ -339,11 +343,7 @@ def ejecutar_pipeline(
             )
 
             signal_activo()
-            actualizar_vista(
-                vista_camara,
-                "BUSCANDO ROSTRO",
-                COLOR_ACTIVO,
-            )
+            preparar_vista(vista_camara)
 
         elif mensaje is MensajePipeline.ERROR:
             estado_pipeline = PipelineState.CLEANING
@@ -355,7 +355,7 @@ def ejecutar_pipeline(
             signal_rechazado()
             actualizar_vista(
                 vista_camara,
-                "ERROR: REINTENTANDO",
+                "RESULTADO: ERROR - REINTENTANDO",
                 COLOR_RECHAZADO,
             )
 

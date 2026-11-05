@@ -220,7 +220,7 @@ assert comandos == [
 assert "ABRIR" not in comandos
 assert telemetria == ["APROBADO"]
 assert any(
-    texto == "ACCESO AUTORIZADO 91.0%"
+    texto == "RESULTADO: AUTORIZADO 91.0%"
     for texto, _color in vista.estados
 )
 

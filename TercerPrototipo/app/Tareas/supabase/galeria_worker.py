@@ -94,7 +94,11 @@ def cargar_personas_supabase(
     return autorizadas
 
 
-def galeria_supabase_worker(config, sincronizacion):
+def galeria_supabase_worker(
+    config,
+    sincronizacion,
+    vista_camara=None,
+):
     """Reintenta Supabase siempre, conservando la última galería válida."""
 
     config_supabase = config.get("supabase", {})
@@ -154,6 +158,11 @@ def galeria_supabase_worker(config, sincronizacion):
 
             if error_anterior is not None:
                 print("Conexión con Supabase recuperada")
+            if vista_camara is not None:
+                vista_camara.actualizar_supabase(
+                    True,
+                    len(personas),
+                )
             error_anterior = None
             espera = intervalo_galeria
 
@@ -166,6 +175,11 @@ def galeria_supabase_worker(config, sincronizacion):
                     descripcion,
                 )
             error_anterior = descripcion
+            if vista_camara is not None:
+                vista_camara.actualizar_supabase(
+                    False,
+                    len(galeria_compartida.obtener()),
+                )
             espera = intervalo_reintento
 
         sincronizacion.shutdown.wait(max(1.0, espera))

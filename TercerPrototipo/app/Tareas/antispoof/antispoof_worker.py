@@ -18,6 +18,7 @@ def antispoof_worker(
     config,
     sincronizacion,
     cola_mensajes,
+    vista_camara=None,
 ):
     """Comprueba si el rostro detectado pertenece a una persona real."""
 
@@ -69,8 +70,15 @@ def antispoof_worker(
 
             puntaje_real = float(probabilidades[1])
             sincronizacion.antispoof_score = puntaje_real
+            aprobado = puntaje_real >= umbral_antispoof
 
-            if puntaje_real >= umbral_antispoof:
+            if vista_camara is not None:
+                vista_camara.actualizar_antispoof(
+                    puntaje_real,
+                    aprobado,
+                )
+
+            if aprobado:
                 sincronizacion.recognition_ready.set()
 
             else:
