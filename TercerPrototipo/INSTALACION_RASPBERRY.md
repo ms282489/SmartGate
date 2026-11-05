@@ -130,3 +130,8 @@ systemctl --user disable --now smartgate.service
 El servicio se inicia al abrir la sesión gráfica y se reinicia si el proceso
 termina por un error. No espera a que haya Internet: SmartGate arranca con la
 galería local y los hilos de Supabase reintentan la conexión en segundo plano.
+
+El servicio está asociado a `default.target`, disponible en el gestor de
+usuario de Raspberry Pi OS. Su lanzador espera a que el escritorio cree un
+socket Wayland o X11 antes de ejecutar `main.py`; así el arranque automático no
+depende de que el escritorio active `graphical-session.target`.

@@ -69,9 +69,15 @@ assert "supabase>=2.24,<3" in requirements
 servicio_systemd = raiz / "systemd/smartgate.service"
 assert servicio_systemd.exists()
 contenido_servicio = servicio_systemd.read_text(encoding="utf-8")
-assert "WantedBy=graphical-session.target" in contenido_servicio
-assert "app/main.py" in contenido_servicio
+assert "WantedBy=default.target" in contenido_servicio
+assert "iniciar_smartgate.sh" in contenido_servicio
 assert "network-online.target" not in contenido_servicio
+
+lanzador_systemd = raiz / "systemd/iniciar_smartgate.sh"
+assert lanzador_systemd.exists()
+contenido_lanzador = lanzador_systemd.read_text(encoding="utf-8")
+assert "wayland-*" in contenido_lanzador
+assert "app/main.py" in contenido_lanzador
 
 print("Rostros en respaldo local:", cantidad_rostros)
 print("Archivos y configuración: correctos")
