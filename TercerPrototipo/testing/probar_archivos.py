@@ -55,6 +55,8 @@ assert config["camera"]["height"] == 960
 assert config["camera"]["preview"]["enabled"] is True
 assert config["camera"]["preview"]["width"] > 0
 assert config["camera"]["preview"]["height"] > 0
+assert config["gate"]["modo_solo_camara"] is True
+assert config["gate"]["resultado_visible_segundos"] >= 0
 if "supabase" in config:
     assert config["supabase"]["retry_seconds"] > 0
     assert config["supabase"]["gallery_refresh_seconds"] > 0

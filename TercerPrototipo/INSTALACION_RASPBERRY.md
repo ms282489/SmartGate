@@ -79,6 +79,19 @@ Se abrirá una ventana llamada `SmartGate` con la imagen de la cámara. Para
 cerrar el programa de forma ordenada, presionar `Q` o `Esc`. La vista puede
 deshabilitarse colocando `camera.preview.enabled: false` en `config/config.yaml`.
 
+Mientras solamente esté conectada la cámara, conservar
+`gate.modo_solo_camara: true`. En ese modo la ventana ejecuta detección,
+antispoofing y reconocimiento, muestra el resultado durante el tiempo definido
+por `resultado_visible_segundos` y vuelve a buscar otro rostro. No utiliza el
+final de carrera ni activa la salida de apertura.
+
+Antes de conectar y operar el portón real es obligatorio cambiar a:
+
+```yaml
+gate:
+  modo_solo_camara: false
+```
+
 Si la cámara no aparece, revisar el cable CSI, el puerto seleccionado y
 el resultado de `rpicam-still --list-cameras` antes de iniciar SmartGate.
 

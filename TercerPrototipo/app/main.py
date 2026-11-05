@@ -156,6 +156,8 @@ pipeline_thread = Thread(
     args=(
         sincronizacion,
         cola_mensajes,
+        config,
+        vista_camara,
     ),
     name="Pipeline",
 )

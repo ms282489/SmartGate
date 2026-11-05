@@ -13,6 +13,8 @@ class VistaCamaraCompartida:
     def __init__(self):
         self._lock = Lock()
         self._imagen = None
+        self._estado = "INICIANDO SMARTGATE"
+        self._color_estado = (255, 255, 255)
         self._version = 0
 
     def actualizar(self, imagen):
@@ -22,13 +24,26 @@ class VistaCamaraCompartida:
             self._imagen = imagen
             self._version += 1
 
+    def actualizar_estado(self, texto, color):
+        """Actualiza el mensaje superpuesto sobre la cámara."""
+
+        with self._lock:
+            self._estado = str(texto)
+            self._color_estado = tuple(color)
+            self._version += 1
+
     def obtener_si_cambio(self, version_anterior):
         """Devuelve solamente los frames que todavía no fueron mostrados."""
 
         with self._lock:
             if self._version == version_anterior:
-                return version_anterior, None
-            return self._version, self._imagen
+                return version_anterior, None, None, None
+            return (
+                self._version,
+                self._imagen,
+                self._estado,
+                self._color_estado,
+            )
 
 
 def ejecutar_vista_camara(
@@ -60,10 +75,30 @@ def ejecutar_vista_camara(
 
     try:
         while not sincronizacion.shutdown.is_set():
-            version, imagen = vista.obtener_si_cambio(version)
+            version, imagen, estado, color_estado = (
+                vista.obtener_si_cambio(version)
+            )
 
             if imagen is not None:
-                cv2.imshow(nombre, imagen)
+                imagen_visible = imagen.copy()
+                cv2.rectangle(
+                    imagen_visible,
+                    (0, 0),
+                    (imagen_visible.shape[1], 70),
+                    (0, 0, 0),
+                    -1,
+                )
+                cv2.putText(
+                    imagen_visible,
+                    estado,
+                    (20, 47),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.0,
+                    color_estado,
+                    2,
+                    cv2.LINE_AA,
+                )
+                cv2.imshow(nombre, imagen_visible)
 
             tecla = cv2.waitKey(demora_tecla) & 0xFF
             if tecla in (ord("q"), ord("Q"), 27):

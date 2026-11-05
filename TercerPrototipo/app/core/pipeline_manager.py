@@ -24,6 +24,20 @@ from Tareas.supabase.supabase_worker import (
 )
 
 
+COLOR_ACTIVO = (0, 255, 0)
+COLOR_PROCESANDO = (0, 165, 255)
+COLOR_ACEPTADO = (0, 255, 0)
+COLOR_RECHAZADO = (0, 0, 255)
+COLOR_ESPERA = (0, 255, 255)
+
+
+def actualizar_vista(vista_camara, texto, color):
+    """Publica el estado del pipeline si la vista está habilitada."""
+
+    if vista_camara is not None:
+        vista_camara.actualizar_estado(texto, color)
+
+
 def habilitar_deteccion(
     sincronizacion: Synchronization,
 ) -> PipelineState:
@@ -79,10 +93,33 @@ def ejecutar_pipeline(
     cola_mensajes: Queue[
         MensajePipeline | ResultadoPipeline
     ],
+    config=None,
+    vista_camara=None,
 ) -> PipelineState:
     """Ejecuta el control principal del pipeline."""
 
+    gate_config = (config or {}).get("gate", {})
+    modo_solo_camara = bool(
+        gate_config.get("modo_solo_camara", False)
+    )
+    resultado_visible = max(
+        0.0,
+        float(gate_config.get("resultado_visible_segundos", 2.0)),
+    )
     estado_pipeline = inicializar_pipeline(sincronizacion)
+
+    if estado_pipeline is PipelineState.IDLE:
+        actualizar_vista(
+            vista_camara,
+            "BUSCANDO ROSTRO",
+            COLOR_ACTIVO,
+        )
+    else:
+        actualizar_vista(
+            vista_camara,
+            "ESPERANDO CIERRE DEL PORTON",
+            COLOR_ESPERA,
+        )
 
     while True:
         try:
@@ -103,6 +140,11 @@ def ejecutar_pipeline(
             resultado = None
 
         if mensaje is MensajePipeline.APAGAR:
+            actualizar_vista(
+                vista_camara,
+                "APAGANDO SMARTGATE",
+                COLOR_ESPERA,
+            )
             sincronizacion.shutdown.set()
 
             # Despertar los modelos para que puedan terminar
@@ -122,6 +164,11 @@ def ejecutar_pipeline(
             sincronizacion.detection_enabled.clear()
             signal_procesando()
             estado_pipeline = PipelineState.PROCESSING
+            actualizar_vista(
+                vista_camara,
+                "PROCESANDO ROSTRO",
+                COLOR_PROCESANDO,
+            )
 
         elif (
             (
@@ -130,10 +177,6 @@ def ejecutar_pipeline(
             )
             and estado_pipeline is PipelineState.PROCESSING
         ):
-            estado_pipeline = habilitar_deteccion(
-                sincronizacion
-            )
-
             if mensaje is MensajePipeline.SPOOF_DETECTADO:
                 registrar_evento("SPOOF")
 
@@ -150,6 +193,7 @@ def ejecutar_pipeline(
                         else None
                     ),
                 )
+                texto_resultado = "SPOOF DETECTADO"
 
             else:
                 registrar_evento("RECHAZADO")
@@ -173,7 +217,35 @@ def ejecutar_pipeline(
                     ),
                 )
 
+                if resultado is not None and resultado.similitud is not None:
+                    texto_resultado = (
+                        "ACCESO RECHAZADO "
+                        f"{resultado.similitud * 100:.1f}%"
+                    )
+                else:
+                    texto_resultado = "ACCESO RECHAZADO"
+
             signal_rechazado()
+            actualizar_vista(
+                vista_camara,
+                texto_resultado,
+                COLOR_RECHAZADO,
+            )
+
+            if modo_solo_camara:
+                sincronizacion.shutdown.wait(resultado_visible)
+
+            estado_pipeline = habilitar_deteccion(
+                sincronizacion
+            )
+
+            if modo_solo_camara:
+                signal_activo()
+                actualizar_vista(
+                    vista_camara,
+                    "BUSCANDO ROSTRO",
+                    COLOR_ACTIVO,
+                )
 
         elif (
             mensaje is MensajePipeline.IDENTIDAD_AUTORIZADA
@@ -208,10 +280,42 @@ def ejecutar_pipeline(
             )
 
             signal_aceptado()
-            signal_abrir_porton()
-            estado_pipeline = PipelineState.WAIT_GATE_OPEN
+
+            if resultado is not None and resultado.similitud is not None:
+                texto_resultado = (
+                    "ACCESO AUTORIZADO "
+                    f"{resultado.similitud * 100:.1f}%"
+                )
+            else:
+                texto_resultado = "ACCESO AUTORIZADO"
+
+            actualizar_vista(
+                vista_camara,
+                texto_resultado,
+                COLOR_ACEPTADO,
+            )
+
+            if modo_solo_camara:
+                sincronizacion.shutdown.wait(resultado_visible)
+                estado_pipeline = habilitar_deteccion(
+                    sincronizacion
+                )
+                signal_activo()
+                actualizar_vista(
+                    vista_camara,
+                    "BUSCANDO ROSTRO",
+                    COLOR_ACTIVO,
+                )
+            else:
+                signal_abrir_porton()
+                estado_pipeline = PipelineState.WAIT_GATE_OPEN
 
         elif mensaje is MensajePipeline.PORTON_ABIERTO:
+            actualizar_vista(
+                vista_camara,
+                "PORTON ABIERTO",
+                COLOR_ESPERA,
+            )
             sincronizacion.gate_closed.clear()
             sincronizacion.detection_enabled.clear()
 
@@ -235,6 +339,11 @@ def ejecutar_pipeline(
             )
 
             signal_activo()
+            actualizar_vista(
+                vista_camara,
+                "BUSCANDO ROSTRO",
+                COLOR_ACTIVO,
+            )
 
         elif mensaje is MensajePipeline.ERROR:
             estado_pipeline = PipelineState.CLEANING
@@ -244,5 +353,10 @@ def ejecutar_pipeline(
             )
 
             signal_rechazado()
+            actualizar_vista(
+                vista_camara,
+                "ERROR: REINTENTANDO",
+                COLOR_RECHAZADO,
+            )
 
     return estado_pipeline

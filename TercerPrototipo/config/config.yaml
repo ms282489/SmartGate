@@ -63,6 +63,13 @@ leds:
 
 gate:
   pulse_tiempo: 500
+
+  # true permite probar detección, antispoofing y reconocimiento usando solo
+  # la cámara. No utiliza el final de carrera ni activa abrir_porton.
+  # Cambiar a false antes de conectar y operar el portón real.
+  modo_solo_camara: true
+  resultado_visible_segundos: 2.0
+
   # Configuración de telemetría serial
 telemetry:
   port: "/dev/serial0"
