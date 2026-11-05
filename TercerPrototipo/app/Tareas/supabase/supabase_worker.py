@@ -17,10 +17,10 @@ from threading import Lock
 # Empty representa que una cola no recibió elementos durante
 # el tiempo de espera. Queue es una cola segura para usar con hilos.
 from queue import Empty, Queue
-from dotenv import dotenv_values
-
-# create_client crea la conexión con Supabase.
-from supabase import create_client
+from Tareas.supabase.cliente import (
+    crear_cliente_supabase,
+    describir_error_supabase,
+)
 
 
 # ------------------------------------------------------------------
@@ -33,14 +33,6 @@ from supabase import create_client
 #
 # parents[3] retrocede hasta la carpeta SegundoPrototipo.
 CARPETA_PROYECTO = Path(__file__).resolve().parents[3]
-
-
-# Archivo que contiene:
-# - URL de Supabase
-# - clave publicable
-# - email del dispositivo
-# - contraseña del dispositivo
-RUTA_ENV = CARPETA_PROYECTO / "app" / ".env"
 
 
 # Si no hay internet, los eventos se guardarán acá.
@@ -184,57 +176,6 @@ def registrar_evento_supabase(
 # ------------------------------------------------------------------
 # CONEXIÓN CON SUPABASE
 # ------------------------------------------------------------------
-
-def crear_cliente():
-    """
-    Crea una conexión autenticada para la Raspberry.
-
-    Se utiliza la clave publicable y el usuario creado en
-    Authentication, no la clave administrativa de Supabase.
-    """
-
-    # Leer las variables de app/.env.
-    credenciales = dotenv_values(RUTA_ENV)
-
-    # Lista de variables obligatorias.
-    variables = (
-        "SUPABASE_URL",
-        "SUPABASE_PUBLISHABLE_KEY",
-        "SUPABASE_DEVICE_EMAIL",
-        "SUPABASE_DEVICE_PASSWORD",
-    )
-
-    # Comprobar cuáles faltan o están vacías.
-    faltantes = [
-        nombre
-        for nombre in variables
-        if not credenciales.get(nombre)
-    ]
-
-    if faltantes:
-        raise RuntimeError(
-            "Faltan variables en app/.env: "
-            + ", ".join(faltantes)
-        )
-
-    # Crear el cliente usando la dirección del proyecto
-    # y la clave publicable.
-    cliente = create_client(
-        credenciales["SUPABASE_URL"],
-        credenciales["SUPABASE_PUBLISHABLE_KEY"],
-    )
-
-    # Iniciar sesión con el usuario de la Raspberry.
-    #
-    # Después de iniciar sesión, Supabase aplica las políticas RLS
-    # correspondientes al rol "authenticated".
-    cliente.auth.sign_in_with_password({
-        "email": credenciales["SUPABASE_DEVICE_EMAIL"],
-        "password": credenciales["SUPABASE_DEVICE_PASSWORD"],
-    })
-
-    return cliente
-
 
 # ------------------------------------------------------------------
 # ENVÍO DE UN EVENTO
@@ -413,7 +354,7 @@ def sincronizar_pendientes(cliente):
 # WORKER PRINCIPAL
 # ------------------------------------------------------------------
 
-def supabase_worker(sincronizacion):
+def supabase_worker(config, sincronizacion):
     """
     Procesa la cola de eventos en un hilo independiente.
 
@@ -466,7 +407,7 @@ def supabase_worker(sincronizacion):
         try:
             # Crear o recuperar una conexión.
             if cliente is None:
-                cliente = crear_cliente()
+                cliente = crear_cliente_supabase(config)
 
             # Primero enviar los eventos antiguos.
             sincronizar_pendientes(cliente)
@@ -496,5 +437,5 @@ def supabase_worker(sincronizacion):
             # Informar el problema sin detener SmartGate.
             print(
                 "Evento guardado localmente:",
-                error,
+                describir_error_supabase(error),
             )

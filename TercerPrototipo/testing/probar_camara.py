@@ -10,9 +10,16 @@ import numpy as np
 import yaml
 
 from core.camara import crear_camara
-from Tareas.reconocimiento.reconocimiento_worker import (
-    cargar_personas_supabase,
+from Tareas.reconocimiento.galeria import (
+    cargar_respaldo_local,
+    guardar_respaldo_local,
+)
+from Tareas.supabase.cliente import (
     crear_cliente_supabase,
+    describir_error_supabase,
+)
+from Tareas.supabase.galeria_worker import (
+    cargar_personas_supabase,
 )
 
 
@@ -34,8 +41,12 @@ alto = camera_config["height"]
 # Durante esta prueba el panel web puede seguir modificando personas
 # y fotografías. Las activaciones se consultan con frecuencia y las
 # fotos se procesan cada pocos segundos.
-INTERVALO_ACTUALIZACION_ACCESOS = 2
-INTERVALO_SINCRONIZACION_FOTOS = 10
+INTERVALO_ACTUALIZACION_ACCESOS = config.get(
+    "supabase", {}
+).get("gallery_refresh_seconds", 5)
+INTERVALO_SINCRONIZACION_FOTOS = config.get(
+    "supabase", {}
+).get("face_sync_seconds", 60)
 
 detector = cv2.FaceDetectorYN.create(
     str(
@@ -83,7 +94,7 @@ def cargar_galeria(
     """Carga desde Supabase los embeddings de personas activas."""
 
     if cliente is None:
-        cliente = crear_cliente_supabase()
+        cliente = crear_cliente_supabase(config)
 
     if reconocedor_galeria is None:
         reconocedor_galeria = reconocedor
@@ -94,35 +105,33 @@ def cargar_galeria(
         cliente=cliente,
         sincronizar_fotos=sincronizar_fotos,
     )
+    guardar_respaldo_local(personas)
 
     return cliente, personas
 
 
-try:
-    cliente_supabase, personas_autorizadas = cargar_galeria(
-        sincronizar_fotos=True,
-    )
-
-    print(
-        "Embeddings activos cargados desde Supabase:",
-        len(personas_autorizadas),
-    )
-
-except Exception as error:
-    raise RuntimeError(
-        "No se pudieron cargar los embeddings activos desde "
-        f"Supabase: {error}"
-    ) from error
-
+# La ventana y el pipeline arrancan inmediatamente con la última galería
+# válida. La primera conexión a Supabase se realiza luego en otro hilo.
+cliente_supabase = None
+personas_autorizadas = cargar_respaldo_local()
 estado_supabase = (
-    "SUPABASE: "
-    f"{len(personas_autorizadas)} EMBEDDINGS ACTIVOS"
+    "SUPABASE: SIN CONEXION - CACHE: "
+    f"{len(personas_autorizadas)}"
 )
-color_supabase = (0, 255, 0)
+color_supabase = (0, 165, 255)
+print(
+    "Galería facial local cargada:",
+    len(personas_autorizadas),
+    "personas",
+)
 
 ahora = time.monotonic()
-ultima_actualizacion_accesos = ahora
-ultima_sincronizacion_fotos = ahora
+ultima_actualizacion_accesos = (
+    ahora - INTERVALO_ACTUALIZACION_ACCESOS
+)
+ultima_sincronizacion_fotos = (
+    ahora - INTERVALO_SINCRONIZACION_FOTOS
+)
 
 # El hilo secundario deja acá la nueva galería o el error ocurrido. Una
 # sola tarea puede estar activa para no acumular consultas a Supabase.
@@ -212,11 +221,14 @@ try:
 
         except Exception as error:
             cliente_supabase = None
-            estado_supabase = "SUPABASE: ERROR DE SINCRONIZACION"
-            color_supabase = (0, 0, 255)
+            estado_supabase = (
+                "SUPABASE: SIN CONEXION - CACHE: "
+                f"{len(personas_autorizadas)}"
+            )
+            color_supabase = (0, 165, 255)
             print(
-                "No se pudo actualizar Supabase:",
-                error,
+                "Supabase no disponible; continúa la galería local:",
+                describir_error_supabase(error),
             )
 
         # Iniciar como máximo una sincronización en segundo plano. La

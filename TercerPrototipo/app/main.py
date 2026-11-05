@@ -14,6 +14,9 @@ from Tareas.reconocimiento.reconocimiento_worker import (
 from Tareas.supabase.supabase_worker import (
     supabase_worker,
 )
+from Tareas.supabase.galeria_worker import (
+    galeria_supabase_worker,
+)
 from Tareas.telemetria.telemetria_worker import (
     telemetria_worker,
 )
@@ -92,9 +95,22 @@ telemetria_thread = Thread(
 supabase_thread = Thread(
     target=supabase_worker,
     args=(
+        config,
         sincronizacion,
     ),
-    name="Supabase",
+    name="EventosSupabase",
+)
+
+
+# La galería facial se sincroniza aparte. Si Internet falla, este hilo
+# reintenta sin detener detección, antispoofing ni reconocimiento.
+galeria_thread = Thread(
+    target=galeria_supabase_worker,
+    args=(
+        config,
+        sincronizacion,
+    ),
+    name="GaleriaSupabase",
 )
 
 
@@ -104,6 +120,7 @@ antispoof_thread.start()
 reconocimiento_thread.start()
 telemetria_thread.start()
 supabase_thread.start()
+galeria_thread.start()
 
 
 # Ejecutar el control principal
@@ -119,3 +136,4 @@ antispoof_thread.join()
 reconocimiento_thread.join()
 telemetria_thread.join()
 supabase_thread.join()
+galeria_thread.join()

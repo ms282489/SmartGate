@@ -12,6 +12,7 @@ carpeta_pruebas = Path(__file__).resolve().parent
 pruebas = [
     "probar_sintaxis.py",
     "probar_archivos.py",
+    "probar_modo_offline.py",
     "probar_pipeline.py",
     "probar_telemetria.py",
 ]

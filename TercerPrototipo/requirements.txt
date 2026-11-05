@@ -5,5 +5,5 @@ opencv-contrib-python
 # paquete PyPI independiente; ver INSTALACION_RASPBERRY.md.
 gpiod; sys_platform == "linux"
 pyserial
-supabase
-python-dotenv
+supabase>=2.24,<3
+python-dotenv>=1,<2

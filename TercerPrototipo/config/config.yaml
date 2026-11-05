@@ -28,6 +28,16 @@ thresholds:
   recognition: 0.50
 
 
+# Supabase se sincroniza en segundo plano. Ninguna de estas esperas
+# detiene el pipeline de cámara cuando no hay Internet.
+supabase:
+  retry_seconds: 10
+  gallery_refresh_seconds: 5
+  face_sync_seconds: 60
+  postgrest_timeout_seconds: 10
+  storage_timeout_seconds: 15
+
+
 # Configuracion GPIO
 gpio:
   chip: "/dev/gpiochip0"

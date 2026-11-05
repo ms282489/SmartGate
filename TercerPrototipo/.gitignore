@@ -3,3 +3,5 @@
 __pycache__/
 *.pyc
 data/eventos_pendientes.jsonl
+data/galeria_rostros.npz
+data/galeria_rostros.npz.*.tmp
