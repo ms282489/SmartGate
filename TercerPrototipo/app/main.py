@@ -38,7 +38,7 @@ cola_mensajes = Queue()
 
 # Configurar e iniciar GPIO
 gpio_manager(
-    config["gpio"],
+    config,
     sincronizacion,
     cola_mensajes,
 )
