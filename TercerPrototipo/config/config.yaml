@@ -35,14 +35,15 @@ gpio:
   pins:
     final_carrera: 17
     led_activo: 18
-    led_procesando: 22
     led_aceptado: 23
     led_rechazado: 24
     abrir_porton: 25
 
-  gate:
-    pulse_tiempo: 500
+leds:
+  frecuencia_procesando_hz: 2.0
 
+gate:
+  pulse_tiempo: 500
   # Configuración de telemetría serial
 telemetry:
   port: "/dev/serial0"
