@@ -75,5 +75,58 @@ de configuración sean correctas:
 python app/main.py
 ```
 
+Se abrirá una ventana llamada `SmartGate` con la imagen de la cámara. Para
+cerrar el programa de forma ordenada, presionar `Q` o `Esc`. La vista puede
+deshabilitarse colocando `camera.preview.enabled: false` en `config/config.yaml`.
+
 Si la cámara no aparece, revisar el cable CSI, el puerto seleccionado y
 el resultado de `rpicam-still --list-cameras` antes de iniciar SmartGate.
+
+## 5. Arranque automático con systemd
+
+La ventana necesita una sesión gráfica. Configurar Raspberry Pi OS para
+iniciar el escritorio automáticamente con el usuario que ejecutará SmartGate:
+
+```bash
+sudo raspi-config
+```
+
+En `System Options` → `Boot`, elegir `Desktop GUI`. Después, en
+`System Options` → `Auto Login`, habilitar el inicio automático del escritorio.
+
+El servicio incluido supone que el repositorio se encuentra en
+`~/Documents/SmartGate`. Si se instaló en otra carpeta, editar las líneas
+`WorkingDirectory` y `ExecStart` de `systemd/smartgate.service` antes de
+instalarlo.
+
+Desde `TercerPrototipo`, instalar y activar el servicio de usuario:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/smartgate.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now smartgate.service
+```
+
+Comprobar su estado y seguir los mensajes del programa con:
+
+```bash
+systemctl --user status smartgate.service
+journalctl --user -u smartgate.service -f
+```
+
+Para aplicar una actualización del código:
+
+```bash
+systemctl --user restart smartgate.service
+```
+
+Para detener y deshabilitar el arranque automático:
+
+```bash
+systemctl --user disable --now smartgate.service
+```
+
+El servicio se inicia al abrir la sesión gráfica y se reinicia si el proceso
+termina por un error. No espera a que haya Internet: SmartGate arranca con la
+galería local y los hilos de Supabase reintentan la conexión en segundo plano.

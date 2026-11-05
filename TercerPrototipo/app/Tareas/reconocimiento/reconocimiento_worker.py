@@ -7,7 +7,6 @@ import cv2
 from core.buffers import tomar_buffer2
 from core.states import MensajePipeline, ResultadoPipeline
 from Tareas.reconocimiento.galeria import (
-    cargar_respaldo_local,
     galeria_compartida,
 )
 
@@ -35,19 +34,6 @@ def reconocimiento_worker(
         reconocedor = cv2.FaceRecognizerSF.create(
             str(RUTA_MODELO),
             "",
-        )
-
-        # El reconocimiento arranca siempre desde disco. El worker de
-        # Supabase reemplaza esta galería más tarde si hay conexión.
-        if galeria_compartida.cantidad() == 0:
-            galeria_compartida.reemplazar(
-                cargar_respaldo_local()
-            )
-
-        print(
-            "Galería facial local cargada:",
-            galeria_compartida.cantidad(),
-            "personas",
         )
 
     except Exception as error:

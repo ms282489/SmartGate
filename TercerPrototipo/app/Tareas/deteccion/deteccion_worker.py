@@ -19,6 +19,7 @@ def deteccion_worker(
     config,
     sincronizacion,
     cola_mensajes,
+    vista_camara=None,
 ):
     """Captura imágenes y busca un rostro."""
 
@@ -61,15 +62,6 @@ def deteccion_worker(
         return
 
     while not sincronizacion.shutdown.is_set():
-
-        # Esperar permiso para detectar
-        sincronizacion.detection_enabled.wait()
-
-        if sincronizacion.shutdown.is_set():
-            break
-
-        sincronizacion.model1_idle.clear()
-
         try:
             lectura_correcta, imagen = camara.read()
 
@@ -77,6 +69,22 @@ def deteccion_worker(
                 raise RuntimeError(
                     "No se pudo obtener una imagen de la cámara"
                 )
+
+            # La misma captura alimenta la ventana y el detector. La cámara
+            # nunca se abre dos veces y la vista continúa aunque el pipeline
+            # esté esperando que el portón cierre.
+            if vista_camara is not None:
+                vista_camara.actualizar(imagen)
+
+            if not sincronizacion.detection_enabled.is_set():
+                continue
+
+            sincronizacion.model1_idle.clear()
+
+            # Evita comenzar una inferencia si el pipeline retiró el permiso
+            # entre la comprobación anterior y la marca de modelo ocupado.
+            if not sincronizacion.detection_enabled.is_set():
+                continue
 
             detector.setInputSize(
                 (imagen.shape[1], imagen.shape[0])

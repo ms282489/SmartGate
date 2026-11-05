@@ -21,6 +21,15 @@ camera:
   # Tiempo para estabilizar exposicion y balance de blancos al iniciar.
   warmup_seconds: 2.0
 
+  # Vista local en el escritorio de Raspberry Pi OS. El pipeline continúa
+  # funcionando si no hay pantalla o no existe una sesión gráfica.
+  preview:
+    enabled: true
+    window_name: "SmartGate"
+    width: 960
+    height: 720
+    wait_key_ms: 30
+
 thresholds:
   # Configuracion de puntajes minimos para ser aprovados por cada modelo, esto se utiliza para ir 
   detection: 0.85

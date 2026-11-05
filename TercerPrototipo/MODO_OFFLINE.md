@@ -9,6 +9,10 @@ intenta conectarse a Supabase en segundo plano. Una demora, un corte de red o
 un error de autenticación no detienen cámara, detección, antispoofing,
 reconocimiento ni GPIO.
 
+El servicio `systemd` tampoco depende de `network-online.target`. Al encender
+la Raspberry, SmartGate puede comenzar con la última galería guardada y luego
+actualizarla automáticamente cuando Supabase vuelva a estar disponible.
+
 Mientras la placa esté desconectada:
 
 - las personas que ya estaban habilitadas continúan funcionando;

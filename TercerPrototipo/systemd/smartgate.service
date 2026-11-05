@@ -1,0 +1,16 @@
+[Unit]
+Description=Sistema de acceso SmartGate
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Documents/SmartGate/TercerPrototipo
+ExecStart=%h/Documents/SmartGate/TercerPrototipo/.venv/bin/python -u app/main.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=graphical-session.target

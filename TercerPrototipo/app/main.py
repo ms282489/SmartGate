@@ -1,3 +1,4 @@
+import signal
 from queue import Queue
 from threading import Thread
 
@@ -5,11 +6,20 @@ import yaml
 
 from core.pipeline_manager import ejecutar_pipeline
 from core.sync import create_synchronization
+from core.states import MensajePipeline
+from core.vista_camara import (
+    VistaCamaraCompartida,
+    ejecutar_vista_camara,
+)
 from Tareas.GPIO.gpio_manager import gpio_manager
 from Tareas.antispoof.antispoof_worker import antispoof_worker
 from Tareas.deteccion.deteccion_worker import deteccion_worker
 from Tareas.reconocimiento.reconocimiento_worker import (
     reconocimiento_worker,
+)
+from Tareas.reconocimiento.galeria import (
+    cargar_respaldo_local,
+    galeria_compartida,
 )
 from Tareas.supabase.supabase_worker import (
     supabase_worker,
@@ -31,9 +41,33 @@ with open(
     config = yaml.safe_load(archivo)
 
 
+# Cargar la última galería persistente antes de iniciar cualquier hilo. Así el
+# primer reconocimiento no depende de Internet y Supabase puede comparar su
+# estado real contra el respaldo, incluso cuando la base no contiene personas.
+personas_locales = cargar_respaldo_local()
+galeria_compartida.reemplazar(personas_locales)
+print(
+    "Galería facial local cargada:",
+    len(personas_locales),
+    "personas",
+)
+
+
 # Crear los recursos compartidos
 sincronizacion = create_synchronization()
 cola_mensajes = Queue()
+vista_camara = VistaCamaraCompartida()
+
+
+def solicitar_apagado(_numero_senal=None, _frame=None):
+    """Solicita un cierre ordenado desde systemd o desde la terminal."""
+
+    if not sincronizacion.shutdown.is_set():
+        cola_mensajes.put(MensajePipeline.APAGAR)
+
+
+signal.signal(signal.SIGINT, solicitar_apagado)
+signal.signal(signal.SIGTERM, solicitar_apagado)
 
 
 # Configurar e iniciar GPIO
@@ -51,6 +85,7 @@ deteccion_thread = Thread(
         config,
         sincronizacion,
         cola_mensajes,
+        vista_camara,
     ),
     name="Deteccion",
 )
@@ -114,6 +149,18 @@ galeria_thread = Thread(
 )
 
 
+# El gestor del pipeline corre aparte para reservar el hilo principal para
+# la interfaz gráfica, como requiere OpenCV en la Raspberry.
+pipeline_thread = Thread(
+    target=ejecutar_pipeline,
+    args=(
+        sincronizacion,
+        cola_mensajes,
+    ),
+    name="Pipeline",
+)
+
+
 # Iniciar los workers
 deteccion_thread.start()
 antispoof_thread.start()
@@ -121,13 +168,24 @@ reconocimiento_thread.start()
 telemetria_thread.start()
 supabase_thread.start()
 galeria_thread.start()
+pipeline_thread.start()
 
 
-# Ejecutar el control principal
-ejecutar_pipeline(
-    sincronizacion,
-    cola_mensajes,
-)
+# Mostrar la cámara si está habilitada. Si no existe una sesión gráfica,
+# la función informa el problema y el control de acceso sigue funcionando.
+preview_config = config.get("camera", {}).get("preview", {})
+
+if preview_config.get("enabled", False):
+    ejecutar_vista_camara(
+        vista_camara,
+        sincronizacion,
+        cola_mensajes,
+        preview_config,
+    )
+
+
+# Sin ventana, o después de cerrarla, esperar que finalice el pipeline.
+pipeline_thread.join()
 
 
 # Esperar que los workers terminen

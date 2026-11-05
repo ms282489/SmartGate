@@ -52,6 +52,9 @@ assert config["telemetry"]["interval"] == 60
 assert config["camera"]["backend"] == "picamera2"
 assert config["camera"]["width"] == 1280
 assert config["camera"]["height"] == 960
+assert config["camera"]["preview"]["enabled"] is True
+assert config["camera"]["preview"]["width"] > 0
+assert config["camera"]["preview"]["height"] > 0
 if "supabase" in config:
     assert config["supabase"]["retry_seconds"] > 0
     assert config["supabase"]["gallery_refresh_seconds"] > 0
@@ -62,6 +65,13 @@ requirements = (
 
 assert "pyserial" in requirements
 assert "supabase>=2.24,<3" in requirements
+
+servicio_systemd = raiz / "systemd/smartgate.service"
+assert servicio_systemd.exists()
+contenido_servicio = servicio_systemd.read_text(encoding="utf-8")
+assert "WantedBy=graphical-session.target" in contenido_servicio
+assert "app/main.py" in contenido_servicio
+assert "network-online.target" not in contenido_servicio
 
 print("Rostros en respaldo local:", cantidad_rostros)
 print("Archivos y configuración: correctos")
