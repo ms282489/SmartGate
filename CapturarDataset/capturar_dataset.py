@@ -1,4 +1,5 @@
 """Captura independiente de fotografías para el dataset SmartGate."""
+
 import argparse
 import os
 import queue
@@ -10,6 +11,10 @@ from pathlib import Path
 import cv2
 import yaml
 from camara import crear_camara
+
+
+RAIZ_PROYECTO = Path(__file__).resolve().parent.parent
+SALIDA_PREDETERMINADA = RAIZ_PROYECTO / "dataset"
 
 
 def validar_nombre(nombre):
@@ -48,12 +53,20 @@ class Guardador:
                 while True:
                     destino = carpeta / f"{nombre}_{numero:04d}.jpg"
                     try:
-                        fd = os.open(destino, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                        fd = os.open(
+                            destino,
+                            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                            0o600,
+                        )
                         break
                     except FileExistsError:
                         numero += 1
                 try:
-                    ok, datos = cv2.imencode(".jpg", imagen, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                    ok, datos = cv2.imencode(
+                        ".jpg",
+                        imagen,
+                        [cv2.IMWRITE_JPEG_QUALITY, 95],
+                    )
                     if not ok:
                         raise RuntimeError("No se pudo codificar el JPEG")
                     with os.fdopen(fd, "wb") as archivo:
@@ -81,12 +94,42 @@ class Guardador:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--nombre", required=True, type=validar_nombre)
-    parser.add_argument("--config", type=Path, default=Path(__file__).with_name("config.yaml"))
-    parser.add_argument("--salida", type=Path, default=Path(__file__).with_name("dataset"))
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path(__file__).with_name("config.yaml"),
+    )
+    parser.add_argument(
+        "--salida",
+        type=Path,
+        default=SALIDA_PREDETERMINADA,
+    )
     parser.add_argument("--fps", type=float, default=30.0)
+    parser.add_argument(
+        "--vista-fps",
+        type=float,
+        default=10.0,
+        help=(
+            "FPS maximos de la ventana. Un valor moderado evita "
+            "saturar la conexion SSH."
+        ),
+    )
     args = parser.parse_args()
     if args.fps <= 0:
         parser.error("--fps debe ser positivo")
+    if args.vista_fps <= 0:
+        parser.error("--vista-fps debe ser positivo")
+
+    if (
+        os.name != "nt"
+        and not os.environ.get("DISPLAY")
+        and not os.environ.get("WAYLAND_DISPLAY")
+    ):
+        parser.error(
+            "no hay una pantalla disponible. Desde macOS inicia XQuartz "
+            "y conectate a la Raspberry con: ssh -Y usuario@direccion"
+        )
+
     with args.config.open(encoding="utf-8") as archivo:
         config = yaml.safe_load(archivo)["camera"].copy()
     config["fps"] = args.fps
@@ -96,6 +139,7 @@ def main():
     stop = threading.Event()
     lock = threading.Lock()
     ultimo = [None]
+    version_imagen = [0]
     fallos = [0]
 
     def adquirir():
@@ -104,6 +148,7 @@ def main():
             if ok:
                 with lock:
                     ultimo[0] = imagen
+                    version_imagen[0] += 1
                 fallos[0] = 0
             else:
                 fallos[0] += 1
@@ -120,34 +165,93 @@ def main():
         hilo = threading.Thread(target=adquirir, daemon=True)
         hilo.start()
         ventana = "SmartGate - dataset"
-        cv2.namedWindow(ventana, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(ventana, 960, 720)
+        try:
+            cv2.namedWindow(ventana, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(ventana, 960, 720)
+        except cv2.error as error:
+            raise RuntimeError(
+                "No se pudo abrir la ventana. En macOS abre XQuartz y "
+                "conectate con 'ssh -Y usuario@direccion'."
+            ) from error
+
         print("ESPACIO=guardar | S=detener | N=nuevo nombre | Q/Esc=salir")
         print("Para reanudar una sesion detenida, presiona N y escribe el nombre.")
+        print("Las fotografias se guardaran en:", args.salida.resolve())
         activo = True
         anterior = time.monotonic()
         cuadros = 0
         fps_vista = 0.0
+        version_mostrada = -1
+        proxima_vista = 0.0
+        intervalo_vista = 1.0 / args.vista_fps
+        capturas_solicitadas = 0
+        aviso_captura_hasta = 0.0
+        imagen = None
+
         while not stop.is_set():
             with lock:
                 imagen = ultimo[0]
-            if imagen is not None:
+                version_actual = version_imagen[0]
+
+            ahora = time.monotonic()
+            if (
+                imagen is not None
+                and version_actual != version_mostrada
+                and ahora >= proxima_vista
+            ):
                 visible = cv2.resize(imagen, (960, 720), interpolation=cv2.INTER_AREA)
+                version_mostrada = version_actual
+                proxima_vista = ahora + intervalo_vista
                 cuadros += 1
-                ahora = time.monotonic()
                 if ahora - anterior >= 1:
                     fps_vista = cuadros / (ahora - anterior)
                     anterior, cuadros = ahora, 0
-                estado = f"{'ACTIVA' if activo else 'PAUSADA'} | {nombre} | vista {fps_vista:.1f} FPS"
-                cv2.putText(visible, estado, (12, 30), cv2.FONT_HERSHEY_SIMPLEX,
-                            0.65, (0, 255, 0) if activo else (0, 200, 255), 2)
+                estado = (
+                    f"{'ACTIVA' if activo else 'PAUSADA'} | {nombre} | "
+                    f"fotos {capturas_solicitadas} | vista {fps_vista:.1f} FPS"
+                )
+                cv2.putText(
+                    visible,
+                    estado,
+                    (12, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.65,
+                    (0, 255, 0) if activo else (0, 200, 255),
+                    2,
+                )
+                cv2.putText(
+                    visible,
+                    "ESPACIO: FOTO | Q/ESC: SALIR",
+                    (12, 705),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (255, 255, 255),
+                    2,
+                )
+
+                if ahora < aviso_captura_hasta:
+                    cv2.putText(
+                        visible,
+                        "FOTO CAPTURADA",
+                        (350, 370),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0,
+                        (0, 255, 0),
+                        3,
+                    )
+
                 cv2.imshow(ventana, visible)
+
             tecla = cv2.waitKey(1) & 0xFF
             if tecla in (ord('q'), ord('Q'), 27):
                 break
             if tecla == ord(' '):
                 if activo and imagen is not None:
-                    guardador.agregar(nombre, imagen)
+                    if guardador.agregar(nombre, imagen):
+                        capturas_solicitadas += 1
+                        aviso_captura_hasta = time.monotonic() + 0.7
+                        # Forzar un repintado para mostrar la confirmacion.
+                        version_mostrada = -1
                 else:
                     print("Sesion pausada o sin imagen disponible")
             elif tecla in (ord('s'), ord('S')):

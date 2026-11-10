@@ -1,0 +1,4 @@
+# El dataset puede contener muchas imágenes y datos biométricos.
+# Conservar la carpeta, pero no subir automáticamente sus fotografías.
+*
+!.gitignore
