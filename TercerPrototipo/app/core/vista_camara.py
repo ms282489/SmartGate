@@ -59,13 +59,23 @@ class VistaCamaraCompartida:
                 self._color_supabase = COLOR_DESCONECTADO
             self._version += 1
 
-    def actualizar_deteccion(self, rostro=None, puntaje=None):
+    def actualizar_deteccion(
+        self,
+        rostro=None,
+        puntaje=None,
+        descanso=False,
+    ):
         """Actualiza el rectángulo y el puntaje del detector YuNet."""
 
         with self._lock:
             if rostro is None:
                 self._rostro = None
-                self._estado_deteccion = "DETECCION: SIN ROSTRO"
+                if descanso:
+                    self._estado_deteccion = (
+                        "DETECCION: IDLE - SONDEO DE BAJO CONSUMO"
+                    )
+                else:
+                    self._estado_deteccion = "DETECCION: SIN ROSTRO"
                 self._color_deteccion = COLOR_NEUTRO
             else:
                 self._rostro = tuple(int(valor) for valor in rostro[:4])

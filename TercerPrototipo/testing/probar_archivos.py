@@ -57,6 +57,11 @@ assert config["camera"]["preview"]["width"] > 0
 assert config["camera"]["preview"]["height"] > 0
 assert config["gate"]["modo_solo_camara"] is True
 assert config["gate"]["resultado_visible_segundos"] >= 0
+assert config["detection"]["inference_width"] <= config["camera"]["width"]
+assert config["detection"]["inference_height"] <= config["camera"]["height"]
+assert config["detection"]["no_face_idle_seconds"] == 5.0
+assert config["detection"]["idle_scan_interval_seconds"] > 0
+assert config["detection"]["authorized_cooldown_seconds"] == 10.0
 if "supabase" in config:
     assert config["supabase"]["retry_seconds"] > 0
     assert config["supabase"]["gallery_refresh_seconds"] > 0

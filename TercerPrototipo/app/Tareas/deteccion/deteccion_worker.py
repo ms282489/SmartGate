@@ -1,5 +1,7 @@
 """Worker encargado de detectar rostros."""
 
+import time
+
 import cv2
 
 from core.buffers import guardar_muestras
@@ -15,6 +17,95 @@ RUTA_MODELO = (
 ESCALA_ANTISPOOF = 2.7
 
 
+class ControlCadenciaDeteccion:
+    """Reduce inferencias cuando lleva varios segundos sin ver rostros."""
+
+    def __init__(
+        self,
+        segundos_sin_rostro,
+        intervalo_activo,
+        intervalo_descanso,
+    ):
+        self.segundos_sin_rostro = max(
+            0.0,
+            float(segundos_sin_rostro),
+        )
+        self.intervalo_activo = max(
+            0.0,
+            float(intervalo_activo),
+        )
+        self.intervalo_descanso = max(
+            0.01,
+            float(intervalo_descanso),
+        )
+        self.en_descanso = False
+        self._sin_rostro_desde = None
+        self._proxima_inferencia = 0.0
+
+    def reiniciar(self, ahora):
+        """Comienza una búsqueda rápida nueva."""
+
+        self.en_descanso = False
+        self._sin_rostro_desde = float(ahora)
+        self._proxima_inferencia = float(ahora)
+
+    def debe_procesar(self, ahora):
+        """Indica si corresponde ejecutar YuNet sobre el cuadro actual."""
+
+        ahora = float(ahora)
+        if ahora < self._proxima_inferencia:
+            return False
+
+        intervalo = (
+            self.intervalo_descanso
+            if self.en_descanso
+            else self.intervalo_activo
+        )
+        self._proxima_inferencia = ahora + intervalo
+        return True
+
+    def registrar_sin_rostro(self, ahora):
+        """Activa el sondeo de descanso al vencer el tiempo configurado."""
+
+        ahora = float(ahora)
+        if self._sin_rostro_desde is None:
+            self._sin_rostro_desde = ahora
+
+        if (
+            not self.en_descanso
+            and ahora - self._sin_rostro_desde
+            >= self.segundos_sin_rostro
+        ):
+            self.en_descanso = True
+            self._proxima_inferencia = (
+                ahora + self.intervalo_descanso
+            )
+
+    def registrar_rostro(self, ahora):
+        """Vuelve a la cadencia rápida al encontrar una cara."""
+
+        self.reiniciar(ahora)
+
+
+def escalar_deteccion(rostro, escala_x, escala_y):
+    """Lleva caja y landmarks de YuNet a la imagen de resolución completa."""
+
+    rostro_escalado = rostro.copy()
+
+    # Caja: x, y, ancho y alto.
+    rostro_escalado[0] *= escala_x
+    rostro_escalado[1] *= escala_y
+    rostro_escalado[2] *= escala_x
+    rostro_escalado[3] *= escala_y
+
+    # YuNet entrega cinco landmarks como pares x/y antes del puntaje final.
+    for indice in range(4, len(rostro_escalado) - 1, 2):
+        rostro_escalado[indice] *= escala_x
+        rostro_escalado[indice + 1] *= escala_y
+
+    return rostro_escalado
+
+
 def deteccion_worker(
     config,
     sincronizacion,
@@ -24,10 +115,40 @@ def deteccion_worker(
     """Captura imágenes y busca un rostro."""
 
     camera_config = config["camera"]
+    detection_config = config.get("detection", {})
     umbral_deteccion = config["thresholds"]["detection"]
 
     ancho = camera_config["width"]
     alto = camera_config["height"]
+    ancho_inferencia = min(
+        ancho,
+        max(
+            1,
+            int(detection_config.get("inference_width", 640)),
+        ),
+    )
+    alto_inferencia = min(
+        alto,
+        max(
+            1,
+            int(detection_config.get("inference_height", 480)),
+        ),
+    )
+    control_cadencia = ControlCadenciaDeteccion(
+        segundos_sin_rostro=detection_config.get(
+            "no_face_idle_seconds",
+            5.0,
+        ),
+        intervalo_activo=detection_config.get(
+            "active_scan_interval_seconds",
+            0.0,
+        ),
+        intervalo_descanso=detection_config.get(
+            "idle_scan_interval_seconds",
+            0.2,
+        ),
+    )
+    deteccion_estaba_habilitada = False
     # Picamera2 permite usar la OV5647 conectada al puerto CSI. La
     # interfaz devuelta conserva read/release para no modificar el
     # resto del pipeline.
@@ -49,7 +170,7 @@ def deteccion_worker(
         detector = cv2.FaceDetectorYN.create(
             RUTA_MODELO,
             "",
-            (ancho, alto),
+            (ancho_inferencia, alto_inferencia),
             umbral_deteccion,
             0.3,
             5000,
@@ -77,6 +198,15 @@ def deteccion_worker(
                 vista_camara.actualizar(imagen)
 
             if not sincronizacion.detection_enabled.is_set():
+                deteccion_estaba_habilitada = False
+                continue
+
+            ahora = time.monotonic()
+            if not deteccion_estaba_habilitada:
+                control_cadencia.reiniciar(ahora)
+                deteccion_estaba_habilitada = True
+
+            if not control_cadencia.debe_procesar(ahora):
                 continue
 
             sincronizacion.model1_idle.clear()
@@ -86,18 +216,44 @@ def deteccion_worker(
             if not sincronizacion.detection_enabled.is_set():
                 continue
 
+            if (
+                imagen.shape[1] != ancho_inferencia
+                or imagen.shape[0] != alto_inferencia
+            ):
+                imagen_detector = cv2.resize(
+                    imagen,
+                    (ancho_inferencia, alto_inferencia),
+                    interpolation=cv2.INTER_AREA,
+                )
+            else:
+                imagen_detector = imagen
+
             detector.setInputSize(
-                (imagen.shape[1], imagen.shape[0])
+                (
+                    imagen_detector.shape[1],
+                    imagen_detector.shape[0],
+                )
             )
 
-            resultado, rostros = detector.detect(imagen)
+            resultado, rostros = detector.detect(imagen_detector)
 
-            if rostros is None:
+            if rostros is None or len(rostros) == 0:
+                control_cadencia.registrar_sin_rostro(
+                    time.monotonic()
+                )
                 if vista_camara is not None:
-                    vista_camara.actualizar_deteccion()
+                    vista_camara.actualizar_deteccion(
+                        descanso=control_cadencia.en_descanso,
+                    )
                 continue
 
-            rostro_detectado = rostros[0]
+            control_cadencia.registrar_rostro(time.monotonic())
+
+            rostro_detectado = escalar_deteccion(
+                rostros[0],
+                imagen.shape[1] / imagen_detector.shape[1],
+                imagen.shape[0] / imagen_detector.shape[0],
+            )
 
             # YuNet entrega la confianza de detección en el último
             # valor del rostro detectado.

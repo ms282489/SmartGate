@@ -13,6 +13,7 @@ pruebas = [
     "probar_sintaxis.py",
     "probar_archivos.py",
     "probar_modo_offline.py",
+    "probar_deteccion.py",
     "probar_pipeline.py",
     "probar_vista_camara.py",
     "probar_telemetria.py",

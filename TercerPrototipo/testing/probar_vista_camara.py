@@ -31,6 +31,12 @@ assert [texto for texto, _color in datos["estados"]] == [
     "RESULTADO: AUTORIZADO 91.0%",
 ]
 
+vista.actualizar_deteccion(descanso=True)
+version, _imagen, datos = vista.obtener_si_cambio(version)
+assert datos["estados"][1][0] == (
+    "DETECCION: IDLE - SONDEO DE BAJO CONSUMO"
+)
+
 version_sin_cambios, imagen_sin_cambios, datos_sin_cambios = (
     vista.obtener_si_cambio(version)
 )

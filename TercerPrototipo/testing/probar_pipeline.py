@@ -1,6 +1,8 @@
 """Prueba el flujo principal sin utilizar hardware."""
 
+import time
 from queue import Queue
+from threading import Thread
 
 from core.pipeline_manager import ejecutar_pipeline
 from core.states import (
@@ -114,7 +116,6 @@ assert comandos == [
     "PROCESANDO",
     "ACEPTADO",
     "ABRIR",
-    "ACTIVO",
     "APAGAR",
 ]
 assert telemetria == ["APROBADO"]
@@ -214,7 +215,6 @@ assert comandos == [
     "ACTIVO",
     "PROCESANDO",
     "ACEPTADO",
-    "ACTIVO",
     "APAGAR",
 ]
 assert "ABRIR" not in comandos
@@ -225,4 +225,53 @@ assert any(
 )
 
 print("Prueba de modo solo cámara: correcta")
+
+
+# Comprobar que el gestor se despierta por sí solo al terminar la pausa,
+# aunque no reciba ningún otro mensaje durante ese intervalo.
+vaciar_cola(gpio_comando_queue)
+vaciar_cola(telemetria_queue)
+sincronizacion = create_synchronization()
+sincronizacion.gate_closed.set()
+cola_mensajes = Queue()
+cola_mensajes.put(MensajePipeline.CANDIDATO_DETECTADO)
+cola_mensajes.put(MensajePipeline.IDENTIDAD_AUTORIZADA)
+
+
+def apagar_despues_de_pausa():
+    time.sleep(0.08)
+    cola_mensajes.put(MensajePipeline.APAGAR)
+
+
+hilo_apagado = Thread(target=apagar_despues_de_pausa)
+hilo_apagado.start()
+inicio = time.monotonic()
+estado = ejecutar_pipeline(
+    sincronizacion,
+    cola_mensajes,
+    config={
+        "gate": {
+            "modo_solo_camara": True,
+            "resultado_visible_segundos": 0,
+        },
+        "detection": {
+            "authorized_cooldown_seconds": 0.04,
+        },
+    },
+)
+hilo_apagado.join()
+duracion = time.monotonic() - inicio
+comandos = vaciar_cola(gpio_comando_queue)
+
+assert estado is PipelineState.IDLE
+assert duracion >= 0.04
+assert comandos == [
+    "ACTIVO",
+    "PROCESANDO",
+    "ACEPTADO",
+    "ACTIVO",
+    "APAGAR",
+]
+
+print("Prueba de pausa después de autorización: correcta")
 print("Todas las pruebas del pipeline finalizaron correctamente")

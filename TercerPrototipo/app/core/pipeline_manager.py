@@ -1,6 +1,7 @@
 """Control del flujo principal del pipeline."""
 
-from queue import Queue
+import time
+from queue import Empty, Queue
 from core.buffers import limpiar_buffers
 from core.states import (
     MensajePipeline,
@@ -54,15 +55,27 @@ def preparar_vista(vista_camara):
         )
 
 
+def mostrar_descanso_autorizado(vista_camara):
+    """Informa que una autorización mantiene pausado el detector."""
+
+    actualizar_vista(
+        vista_camara,
+        "RESULTADO: IDLE - PAUSA DESPUES DE AUTORIZACION",
+        COLOR_ESPERA,
+    )
+
+
 def habilitar_deteccion(
     sincronizacion: Synchronization,
+    no_antes_de=None,
 ) -> PipelineState:
-    """Habilita la detección si el portón está cerrado."""
+    """Habilita la detección si el portón está cerrado y no hay pausa."""
 
     sincronizacion.detection_enabled.clear()
 
     if sincronizacion.gate_closed.is_set():
-        sincronizacion.detection_enabled.set()
+        if no_antes_de is None or time.monotonic() >= no_antes_de:
+            sincronizacion.detection_enabled.set()
         return PipelineState.IDLE
 
     return PipelineState.WAIT_GATE_CLOSE
@@ -122,6 +135,18 @@ def ejecutar_pipeline(
         0.0,
         float(gate_config.get("resultado_visible_segundos", 2.0)),
     )
+    detection_config = (config or {}).get("detection", {})
+    pausa_autorizado = max(
+        0.0,
+        float(
+            detection_config.get(
+                "authorized_cooldown_seconds",
+                10.0,
+            )
+        ),
+    )
+    reactivar_deteccion_en = None
+    pausa_autorizada_pendiente = False
     estado_pipeline = inicializar_pipeline(sincronizacion)
 
     if estado_pipeline is PipelineState.IDLE:
@@ -134,8 +159,36 @@ def ejecutar_pipeline(
         )
 
     while True:
+        # La pausa posterior a una autorización no bloquea el gestor: durante
+        # esos segundos todavía puede atender el portón, errores o el apagado.
+        if (
+            estado_pipeline is PipelineState.IDLE
+            and reactivar_deteccion_en is not None
+            and time.monotonic() >= reactivar_deteccion_en
+        ):
+            reactivar_deteccion_en = None
+            estado_pipeline = habilitar_deteccion(sincronizacion)
+
+            if sincronizacion.detection_enabled.is_set():
+                signal_activo()
+                preparar_vista(vista_camara)
+
+        espera_mensaje = None
+        if (
+            estado_pipeline is PipelineState.IDLE
+            and reactivar_deteccion_en is not None
+        ):
+            espera_mensaje = max(
+                0.0,
+                reactivar_deteccion_en - time.monotonic(),
+            )
+
         try:
-            elemento = cola_mensajes.get()
+            elemento = cola_mensajes.get(timeout=espera_mensaje)
+
+        except Empty:
+            # Venció la pausa; la siguiente vuelta habilita el detector.
+            continue
 
         except KeyboardInterrupt:
             elemento = MensajePipeline.APAGAR
@@ -303,13 +356,25 @@ def ejecutar_pipeline(
                 COLOR_ACEPTADO,
             )
 
+            pausa_autorizada_pendiente = True
+
             if modo_solo_camara:
                 sincronizacion.shutdown.wait(resultado_visible)
-                estado_pipeline = habilitar_deteccion(
-                    sincronizacion
+                reactivar_deteccion_en = (
+                    time.monotonic() + pausa_autorizado
                 )
-                signal_activo()
-                preparar_vista(vista_camara)
+                pausa_autorizada_pendiente = False
+                estado_pipeline = habilitar_deteccion(
+                    sincronizacion,
+                    no_antes_de=reactivar_deteccion_en,
+                )
+
+                if sincronizacion.detection_enabled.is_set():
+                    reactivar_deteccion_en = None
+                    signal_activo()
+                    preparar_vista(vista_camara)
+                else:
+                    mostrar_descanso_autorizado(vista_camara)
             else:
                 signal_abrir_porton()
                 estado_pipeline = PipelineState.WAIT_GATE_OPEN
@@ -338,12 +403,26 @@ def ejecutar_pipeline(
             and estado_pipeline is PipelineState.WAIT_GATE_CLOSE
         ):
             sincronizacion.gate_closed.set()
+
+            if pausa_autorizada_pendiente:
+                # En el modo con portón, los 10 segundos de IDLE empiezan
+                # cuando termina de cerrar y el sistema puede volver a buscar.
+                reactivar_deteccion_en = (
+                    time.monotonic() + pausa_autorizado
+                )
+                pausa_autorizada_pendiente = False
+
             estado_pipeline = habilitar_deteccion(
-                sincronizacion
+                sincronizacion,
+                no_antes_de=reactivar_deteccion_en,
             )
 
-            signal_activo()
-            preparar_vista(vista_camara)
+            if sincronizacion.detection_enabled.is_set():
+                reactivar_deteccion_en = None
+                signal_activo()
+                preparar_vista(vista_camara)
+            else:
+                mostrar_descanso_autorizado(vista_camara)
 
         elif mensaje is MensajePipeline.ERROR:
             estado_pipeline = PipelineState.CLEANING

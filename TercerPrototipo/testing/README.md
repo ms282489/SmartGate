@@ -14,12 +14,28 @@ Se comprueba:
 - La existencia de los tres modelos.
 - La existencia y contenido de `embeddings.npy`.
 - La configuración de telemetría.
+- La pausa posterior a una autorización y su reactivación automática.
+- La entrada del detector a IDLE tras 5 segundos sin rostros.
+- El sondeo de bajo consumo y el escalado de coordenadas de YuNet.
 - Los estados principales del pipeline.
 - Los comandos destinados a GPIO.
 - Los eventos enviados a telemetría.
 - El resumen serial mediante un puerto simulado.
 
 Estas pruebas no comprueban la cámara, los pines GPIO, el puerto serial físico ni la velocidad real de los modelos. Esas partes deben probarse en la Raspberry Pi.
+
+## Cadencia configurada del detector
+
+La sección `detection` de `config/config.yaml` controla el rendimiento. YuNet
+busca sin una pausa artificial mientras el sistema está activo. Después de 5
+segundos sin rostros pasa a IDLE y sondea cada 0,2 segundos. Al encontrar una
+cara procesa ese mismo cuadro. Después de autorizar una identidad y volver a
+IDLE, el detector permanece deshabilitado durante 10 segundos para no repetir
+el acceso de la misma persona.
+
+La detección inicial se ejecuta sobre una copia de 640x480 para reducir el
+tiempo de inferencia. El antispoofing y el reconocimiento conservan la imagen
+original de 1280x960.
 
 ## Prueba rápida de la Arducam OV5647
 

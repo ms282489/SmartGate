@@ -37,6 +37,28 @@ thresholds:
   recognition: 0.50
 
 
+# Ritmo del detector YuNet. El reconocimiento y el antispoofing siguen usando
+# el cuadro original de 1280x960; solo la búsqueda inicial usa una copia más
+# pequeña y luego escala la caja y los landmarks a la resolución completa.
+detection:
+  inference_width: 640
+  inference_height: 480
+
+  # Mientras una persona se acerca, buscar en cada cuadro para responder sin
+  # una espera perceptible. Cero significa sin pausa artificial adicional.
+  active_scan_interval_seconds: 0.0
+
+  # Si no aparece ninguna cara durante 5 segundos, pasar a IDLE y ejecutar
+  # YuNet cinco veces por segundo. Una cara encontrada se procesa en ese mismo
+  # cuadro, por lo que la demora máxima agregada es de aproximadamente 0.2 s.
+  no_face_idle_seconds: 5.0
+  idle_scan_interval_seconds: 0.2
+
+  # Evita reconocer repetidamente a la misma persona. La pausa comienza al
+  # volver a IDLE: tras mostrar el resultado o después de cerrar el portón.
+  authorized_cooldown_seconds: 10.0
+
+
 # Supabase se sincroniza en segundo plano. Ninguna de estas esperas
 # detiene el pipeline de cámara cuando no hay Internet.
 supabase:
