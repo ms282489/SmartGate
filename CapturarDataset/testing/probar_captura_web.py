@@ -15,6 +15,7 @@ CARPETA_MODULO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CARPETA_MODULO))
 
 from capturar_dataset_web import (  # noqa: E402
+    PAGINA,
     EstadoWeb,
     codificar_preview,
     crear_handler,
@@ -99,6 +100,7 @@ assert detenido is True
 # Comprobar los endpoints usados por el navegador sobre un puerto temporal.
 estado_http = EstadoWeb("real_mateo", GuardadorFalso())
 estado_http.publicar_imagen(imagen)
+estado_http.publicar_preview(jpeg, 19.8)
 servidor = ThreadingHTTPServer(
     ("127.0.0.1", 0),
     crear_handler(estado_http, "<html>SmartGate</html>"),
@@ -136,6 +138,14 @@ with urlopen(
 
 with urlopen(f"{url_base}/api/status", timeout=2) as respuesta:
     assert json.loads(respuesta.read())["fotos"] == 1
+
+with urlopen(f"{url_base}/frame.jpg?v=1", timeout=2) as respuesta:
+    assert respuesta.status == 200
+    assert respuesta.headers.get_content_type() == "image/jpeg"
+    assert respuesta.read() == jpeg
+
+assert 'id="vista-camara"' in PAGINA
+assert "/frame.jpg?v=" in PAGINA
 
 with urlopen(
     Request(f"{url_base}/api/stop", method="POST"),

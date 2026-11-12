@@ -50,6 +50,9 @@ PAGINA = """<!doctype html>
              overflow: hidden; border: 1px solid #343a40; }
     img { display: block; width: 100%; aspect-ratio: 4 / 3;
           object-fit: contain; }
+    #estado-video { position: absolute; inset: 0; display: grid;
+             place-items: center; color: #adb5bd; pointer-events: none; }
+    #estado-video.oculto { display: none; }
     #aviso { position: absolute; inset: 0; display: grid; place-items: center;
              font-size: clamp(1.5rem, 5vw, 3rem); font-weight: 800;
              color: #53f27e; opacity: 0; transition: opacity .12s; }
@@ -144,7 +147,8 @@ PAGINA = """<!doctype html>
     <div id="sesion-activa">Completa los datos antes de tomar fotografías.</div>
   </section>
   <div class="video">
-    <img src="/stream.mjpg" alt="Vista de la cámara">
+    <img id="vista-camara" alt="Vista de la cámara">
+    <div id="estado-video">Esperando imagen de la cámara…</div>
     <div id="aviso">FOTO CAPTURADA</div>
   </div>
   <nav>
@@ -162,6 +166,8 @@ PAGINA = """<!doctype html>
   const labelName = document.querySelector('#label-name');
   const mediumId = document.querySelector('#medium-id');
   const sourceContent = document.querySelector('#source-content');
+  const vistaCamara = document.querySelector('#vista-camara');
+  const estadoVideo = document.querySelector('#estado-video');
   let capturando = false;
   let sesionActiva = false;
   let formularioSucio = false;
@@ -253,6 +259,19 @@ PAGINA = """<!doctype html>
     }
   }
 
+  function actualizarVista() {
+    vistaCamara.onload = () => {
+      estadoVideo.classList.add('oculto');
+      setTimeout(actualizarVista, 40);
+    };
+    vistaCamara.onerror = () => {
+      estadoVideo.classList.remove('oculto');
+      estadoVideo.textContent = 'Esperando imagen de la cámara…';
+      setTimeout(actualizarVista, 500);
+    };
+    vistaCamara.src = `/frame.jpg?v=${Date.now()}`;
+  }
+
   botonCapturar.addEventListener('click', capturar);
   document.querySelector('#detener').addEventListener('click', async () => {
     await fetch('/api/stop', {method: 'POST'});
@@ -268,6 +287,7 @@ PAGINA = """<!doctype html>
   });
   labelName.addEventListener('change', adaptarCamposAtaque);
   adaptarCamposAtaque();
+  actualizarVista();
   setInterval(actualizarEstado, 500);
   actualizarEstado();
 </script>
@@ -317,6 +337,16 @@ class EstadoWeb:
                 timeout=timeout,
             )
             return self._version, self._jpeg, self._detenido
+
+    def obtener_preview(self, timeout=2.0):
+        """Espera el primer JPEG y devuelve el cuadro más reciente."""
+
+        with self._condicion:
+            self._condicion.wait_for(
+                lambda: self._jpeg is not None or self._detenido,
+                timeout=timeout,
+            )
+            return self._jpeg, self._detenido
 
     def capturar(self):
         with self._lock:
@@ -433,7 +463,9 @@ def crear_handler(estado, pagina):
                 raise ValueError("JSON no valido") from error
 
         def do_GET(self):
-            if self.path == "/":
+            ruta = self.path.partition("?")[0]
+
+            if ruta == "/":
                 cuerpo = pagina.encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -443,11 +475,25 @@ def crear_handler(estado, pagina):
                 self.wfile.write(cuerpo)
                 return
 
-            if self.path == "/api/status":
+            if ruta == "/api/status":
                 self.enviar_json(estado.estado())
                 return
 
-            if self.path == "/stream.mjpg":
+            if ruta == "/frame.jpg":
+                jpeg, detenido = estado.obtener_preview()
+                if jpeg is None or detenido:
+                    self.send_error(503, "La camara todavia no entrego imagen")
+                    return
+
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(jpeg)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(jpeg)
+                return
+
+            if ruta == "/stream.mjpg":
                 self.send_response(200)
                 self.send_header(
                     "Content-Type",
