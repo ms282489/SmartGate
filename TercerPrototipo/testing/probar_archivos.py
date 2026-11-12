@@ -62,7 +62,7 @@ assert config["detection"]["inference_height"] <= config["camera"]["height"]
 assert config["detection"]["no_face_idle_seconds"] == 5.0
 assert config["detection"]["idle_scan_interval_seconds"] > 0
 assert config["detection"]["authorized_cooldown_seconds"] == 10.0
-assert config["detection"]["gate_open_cooldown_seconds"] == 10.0
+assert config["gpio"]["final_carrera_cerrado_activo_alto"] is True
 if "supabase" in config:
     assert config["supabase"]["retry_seconds"] > 0
     assert config["supabase"]["gallery_refresh_seconds"] > 0

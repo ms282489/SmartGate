@@ -17,7 +17,7 @@ class PipelineState(Enum):
     # La persona fue autorizada y se espera que el portón comience a abrir.
     WAIT_GATE_OPEN = auto()
 
-    # El portón está abierto y se espera que vuelva a cerrarse.
+    # El portón no está completamente cerrado y se espera la señal de cierre.
     WAIT_GATE_CLOSE = auto()
 
     # Se produjo una situación inesperada y deben normalizarse los recursos.
@@ -38,10 +38,10 @@ class MensajePipeline(Enum):
     # Modelo 3 reconoció a una persona autorizada.
     IDENTIDAD_AUTORIZADA = auto()
 
-    # El final de carrera indicó que el portón comenzó a abrirse.
+    # Desapareció la señal de portón completamente cerrado.
     PORTON_ABIERTO = auto()
 
-    # El final de carrera indicó que el portón terminó de cerrar.
+    # El final de carrera indicó que el portón está completamente cerrado.
     PORTON_CERRADO = auto()
 
     # Algún hilo encontró un error.

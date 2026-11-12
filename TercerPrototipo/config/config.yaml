@@ -58,11 +58,6 @@ detection:
   # volver a IDLE: tras mostrar el resultado o después de cerrar el portón.
   authorized_cooldown_seconds: 10.0
 
-  # Toda señal física de apertura detiene la detección durante al menos este
-  # tiempo. Si el portón sigue abierto, la detección espera además a su cierre.
-  gate_open_cooldown_seconds: 10.0
-
-
 # Supabase se sincroniza en segundo plano. Ninguna de estas esperas
 # detiene el pipeline de cámara cuando no hay Internet.
 supabase:
@@ -76,6 +71,10 @@ supabase:
 # Configuracion GPIO
 gpio:
   chip: "/dev/gpiochip0"
+
+  # El final de carrera entrega HIGH únicamente cuando el portón está
+  # completamente cerrado. LOW significa abierto, abriendo o cerrando.
+  final_carrera_cerrado_activo_alto: true
 
   pins:
     final_carrera: 17

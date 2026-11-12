@@ -65,12 +65,12 @@ def mostrar_descanso_autorizado(vista_camara):
     )
 
 
-def mostrar_pausa_apertura(vista_camara):
-    """Informa que una apertura mantiene pausado el detector."""
+def mostrar_pausa_seguridad(vista_camara):
+    """Informa que una condición de seguridad mantiene la pausa."""
 
     actualizar_vista(
         vista_camara,
-        "RESULTADO: IDLE - PAUSA POR APERTURA DEL PORTON",
+        "RESULTADO: IDLE - PAUSA DE SEGURIDAD",
         COLOR_ESPERA,
     )
 
@@ -165,15 +165,6 @@ def ejecutar_pipeline(
         float(
             detection_config.get(
                 "authorized_cooldown_seconds",
-                10.0,
-            )
-        ),
-    )
-    pausa_apertura = max(
-        0.0,
-        float(
-            detection_config.get(
-                "gate_open_cooldown_seconds",
                 10.0,
             )
         ),
@@ -425,10 +416,6 @@ def ejecutar_pipeline(
             )
             sincronizacion.gate_closed.clear()
             sincronizacion.detection_enabled.clear()
-            reactivar_deteccion_en = extender_pausa(
-                reactivar_deteccion_en,
-                pausa_apertura,
-            )
 
             # Apertura esperada después de una autorización
             if estado_pipeline in (
@@ -468,7 +455,7 @@ def ejecutar_pipeline(
                 signal_activo()
                 preparar_vista(vista_camara)
             else:
-                mostrar_pausa_apertura(vista_camara)
+                mostrar_pausa_seguridad(vista_camara)
 
         elif mensaje is MensajePipeline.ERROR:
             estado_pipeline = PipelineState.CLEANING

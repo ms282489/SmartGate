@@ -92,6 +92,16 @@ gate:
   modo_solo_camara: false
 ```
 
+El final de carrera se interpreta como una señal de estado: HIGH significa
+portón completamente cerrado. Cuando la señal pasa a LOW, SmartGate detiene la
+detección inmediatamente y no la reanuda hasta recibir HIGH otra vez. Si el
+circuito instalado usa la polaridad contraria, cambiar en `config/config.yaml`:
+
+```yaml
+gpio:
+  final_carrera_cerrado_activo_alto: false
+```
+
 Si la cámara no aparece, revisar el cable CSI, el puerto seleccionado y
 el resultado de `rpicam-still --list-cameras` antes de iniciar SmartGate.
 

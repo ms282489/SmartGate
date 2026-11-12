@@ -11,6 +11,7 @@ from core.states import (
     ResultadoPipeline,
 )
 from core.sync import create_synchronization
+from Tareas.GPIO.fc_worker import actualizar_estado_final_carrera
 from Tareas.GPIO.gpio_comandos import gpio_comando_queue
 from Tareas.telemetria.telemetria_worker import telemetria_queue
 
@@ -156,6 +157,7 @@ assert estado is PipelineState.IDLE
 assert comandos == [
     "ACTIVO",
     "PROCESANDO",
+    "ACTIVO",
     "APAGAR",
 ]
 assert telemetria == []
@@ -321,15 +323,14 @@ assert comandos == [
 print("Prueba de duración visible del rechazo: correcta")
 
 
-# Una apertura física debe deshabilitar la detección aunque no provenga de una
-# autorización y mantenerla pausada hasta que venza el plazo de seguridad.
+# La señal activa representa portón cerrado. Al desaparecer debe cortar la
+# detección inmediatamente y mantenerla detenida hasta que vuelva la señal.
 vaciar_cola(gpio_comando_queue)
 vaciar_cola(telemetria_queue)
 sincronizacion = create_synchronization()
 sincronizacion.gate_closed.set()
 cola_mensajes = Queue()
 cola_mensajes.put(MensajePipeline.PORTON_ABIERTO)
-cola_mensajes.put(MensajePipeline.PORTON_CERRADO)
 estado_durante_pausa = []
 
 
@@ -338,13 +339,13 @@ def comprobar_pausa_y_apagar():
     estado_durante_pausa.append(
         sincronizacion.detection_enabled.is_set()
     )
-    time.sleep(0.06)
+    cola_mensajes.put(MensajePipeline.PORTON_CERRADO)
+    time.sleep(0.02)
     cola_mensajes.put(MensajePipeline.APAGAR)
 
 
 hilo_apagado = Thread(target=comprobar_pausa_y_apagar)
 hilo_apagado.start()
-inicio = time.monotonic()
 estado = ejecutar_pipeline(
     sincronizacion,
     cola_mensajes,
@@ -354,22 +355,49 @@ estado = ejecutar_pipeline(
             "resultado_visible_segundos": 0,
         },
         "detection": {
-            "gate_open_cooldown_seconds": 0.04,
+            "authorized_cooldown_seconds": 0.04,
         },
     },
 )
 hilo_apagado.join()
-duracion = time.monotonic() - inicio
 comandos = vaciar_cola(gpio_comando_queue)
 
 assert estado is PipelineState.IDLE
 assert estado_durante_pausa == [False]
-assert duracion >= 0.04
 assert comandos == [
     "ACTIVO",
     "ACTIVO",
     "APAGAR",
 ]
 
-print("Prueba de pausa por apertura física: correcta")
+print("Prueba de bloqueo hasta cierre físico: correcta")
+
+
+# Comprobar por separado la interpretación eléctrica configurada: HIGH es
+# cerrado y LOW significa que el portón no está completamente cerrado.
+sincronizacion = create_synchronization()
+sincronizacion.detection_enabled.set()
+cola_final_carrera = Queue()
+
+actualizar_estado_final_carrera(
+    1,
+    1,
+    sincronizacion,
+    cola_final_carrera,
+)
+assert sincronizacion.gate_closed.is_set()
+assert sincronizacion.detection_enabled.is_set()
+assert cola_final_carrera.get_nowait() is MensajePipeline.PORTON_CERRADO
+
+actualizar_estado_final_carrera(
+    0,
+    1,
+    sincronizacion,
+    cola_final_carrera,
+)
+assert not sincronizacion.gate_closed.is_set()
+assert not sincronizacion.detection_enabled.is_set()
+assert cola_final_carrera.get_nowait() is MensajePipeline.PORTON_ABIERTO
+
+print("Prueba de polaridad del final de carrera: correcta")
 print("Todas las pruebas del pipeline finalizaron correctamente")
