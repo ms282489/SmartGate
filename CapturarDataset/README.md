@@ -27,7 +27,7 @@ Dentro de esa misma conexión SSH:
 
 ```bash
 cd ~/Documents/SmartGate
-python3 CapturarDataset/capturar_dataset_web.py --nombre real_mateo
+python3 CapturarDataset/capturar_dataset_web.py
 ```
 
 SmartGate debe estar detenido si está usando la cámara. Una cámara CSI no puede
@@ -43,15 +43,38 @@ http://localhost:8765
 
 Controles:
 
+- Formulario `Datos de la sesión`: identifica persona, sesión y tipo de muestra.
+- Botón `Guardar e iniciar sesión`: valida los metadatos y habilita la captura.
 - `Espacio`: guardar la fotografía completa más reciente.
 - Botón `Tomar foto`: alternativa para capturar con el ratón.
 - Botón `Finalizar`: guardar lo pendiente, liberar la cámara y cerrar.
+
+Cada fotografía recibe un `image_id` único y se almacena en una ruta como:
+
+```text
+dataset/real/p001/s01/img_a1b2c3....jpg
+```
+
+La misma operación agrega una fila a:
+
+```text
+dataset/metadata.csv
+```
+
+`image_id` e `image_path` vinculan inequívocamente la fila con la fotografía.
+`person_id` debe repetirse en todas las sesiones de la misma persona; el alias
+es opcional y solo sirve para facilitar la identificación humana. Al guardar de
+nuevo el formulario se crea un nuevo `capture_group_id` y el contador de la
+sesión vuelve a cero.
+
+Para muestras falsas, `medium_id` identifica el elemento utilizado, por ejemplo
+`phone01`, `tablet02` o `printer01`. Las capturas con pantalla también requieren
+indicar si muestran una fotografía o un video.
 
 Para reducir todavía más el tráfico o la carga de la Raspberry:
 
 ```bash
 python3 CapturarDataset/capturar_dataset_web.py \
-  --nombre real_mateo \
   --vista-ancho 480 \
   --calidad-jpeg 45 \
   --vista-fps 20

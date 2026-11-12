@@ -1,7 +1,6 @@
 """Captura el dataset desde un navegador conectado por un tunel SSH."""
 
 import argparse
-import html
 import json
 import threading
 import time
@@ -15,7 +14,8 @@ from camara import crear_camara
 from capturar_dataset import (
     SALIDA_PREDETERMINADA,
     Guardador,
-    validar_nombre,
+    crear_metadatos_captura,
+    normalizar_metadatos_sesion,
 )
 
 
@@ -29,11 +29,23 @@ PAGINA = """<!doctype html>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; }
     * { box-sizing: border-box; }
     body { margin: 0; background: #101214; color: #f3f5f7; }
-    main { width: min(100%, 960px); margin: auto; padding: 16px; }
+    main { width: min(100%, 1040px); margin: auto; padding: 16px; }
     header { display: flex; gap: 12px; justify-content: space-between;
              align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
     h1 { font-size: 1.2rem; margin: 0; }
+    h2 { font-size: 1.05rem; margin: 0 0 12px; }
     #estado { color: #8ee6a8; font-variant-numeric: tabular-nums; }
+    .panel { margin-bottom: 14px; padding: 14px; background: #181b1f;
+             border: 1px solid #343a40; border-radius: 12px; }
+    .campos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    label { display: grid; gap: 5px; color: #c9d0d7; font-size: .86rem; }
+    label.ancho { grid-column: span 2; }
+    input, select, textarea { width: 100%; min-height: 40px; padding: 8px 10px;
+             color: #f3f5f7; background: #0d0f11; border: 1px solid #495057;
+             border-radius: 7px; font: inherit; }
+    textarea { min-height: 64px; resize: vertical; }
+    .ayuda { color: #8e99a4; font-size: .78rem; margin-top: 2px; }
+    #sesion-activa { margin-top: 10px; color: #8ee6a8; min-height: 1.3em; }
     .video { position: relative; background: #050607; border-radius: 12px;
              overflow: hidden; border: 1px solid #343a40; }
     img { display: block; width: 100%; aspect-ratio: 4 / 3;
@@ -42,53 +54,195 @@ PAGINA = """<!doctype html>
              font-size: clamp(1.5rem, 5vw, 3rem); font-weight: 800;
              color: #53f27e; opacity: 0; transition: opacity .12s; }
     #aviso.visible { opacity: 1; }
-    nav { display: flex; gap: 10px; margin-top: 12px; }
+    nav, .acciones { display: flex; gap: 10px; margin-top: 12px; }
     button { flex: 1; min-height: 48px; border: 0; border-radius: 10px;
              font-size: 1rem; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    #guardar-sesion { background: #3b82f6; color: white; }
     #capturar { background: #32c95b; color: #08140b; }
     #detener { background: #3b4147; color: white; }
     p { color: #adb5bd; margin: 10px 0 0; text-align: center; }
+    @media (max-width: 760px) {
+      .campos { grid-template-columns: 1fr; }
+      label.ancho { grid-column: auto; }
+    }
   </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>SmartGate · __NOMBRE__</h1>
+    <h1>SmartGate · Captura del dataset</h1>
     <div id="estado">Conectando…</div>
   </header>
+  <section class="panel">
+    <h2>Datos de la sesión</h2>
+    <form id="form-sesion">
+      <div class="campos">
+        <label>
+          ID de persona *
+          <input name="person_id" required maxlength="64"
+                 pattern="[A-Za-z0-9_-]+" placeholder="p001">
+          <span class="ayuda">Debe repetirse para la misma persona.</span>
+        </label>
+        <label>
+          Alias o nombre
+          <input name="person_alias" maxlength="120" placeholder="Mateo">
+          <span class="ayuda">Opcional; el entrenamiento usa el ID.</span>
+        </label>
+        <label>
+          ID de sesión
+          <input name="session_id" maxlength="64"
+                 pattern="[A-Za-z0-9_-]+" placeholder="Vacío = automático">
+          <span class="ayuda">Usa otra sesión al cambiar día o entorno.</span>
+        </label>
+        <label>
+          Tipo de muestra *
+          <select name="label_name" id="label-name" required>
+            <option value="real">Persona real</option>
+            <option value="spoof_print">Fotografía impresa</option>
+            <option value="spoof_screen">Pantalla o reproducción</option>
+          </select>
+        </label>
+        <label>
+          ID del medio de ataque
+          <input name="medium_id" id="medium-id" maxlength="64"
+                 pattern="[A-Za-z0-9_-]+" placeholder="phone01 o printer01">
+        </label>
+        <label>
+          Contenido mostrado
+          <select name="source_content" id="source-content">
+            <option value="none">No corresponde</option>
+            <option value="photo">Fotografía</option>
+            <option value="video">Video</option>
+          </select>
+        </label>
+        <label>
+          Iluminación
+          <select name="lighting">
+            <option value="unknown">Sin especificar</option>
+            <option value="natural">Natural</option>
+            <option value="artificial">Artificial</option>
+            <option value="low">Baja</option>
+            <option value="backlight">Contraluz</option>
+            <option value="mixed">Mixta</option>
+          </select>
+        </label>
+        <label class="ancho">
+          Lugar
+          <input name="location" maxlength="120" placeholder="porton_laboratorio">
+        </label>
+        <label class="ancho">
+          Observaciones
+          <textarea name="notes" maxlength="500"
+                    placeholder="Papel brillante, pantalla al 80%, lentes, etc."></textarea>
+        </label>
+      </div>
+      <div class="acciones">
+        <button type="submit" id="guardar-sesion">Guardar e iniciar sesión</button>
+      </div>
+    </form>
+    <div id="sesion-activa">Completa los datos antes de tomar fotografías.</div>
+  </section>
   <div class="video">
     <img src="/stream.mjpg" alt="Vista de la cámara">
     <div id="aviso">FOTO CAPTURADA</div>
   </div>
   <nav>
-    <button id="capturar">Tomar foto · Espacio</button>
+    <button id="capturar" disabled>Tomar foto · Espacio</button>
     <button id="detener">Finalizar</button>
   </nav>
-  <p>La vista está comprimida; las fotos se guardan a resolución completa.</p>
+  <p>La vista está comprimida; las fotos y sus metadatos se guardan a resolución completa.</p>
 </main>
 <script>
   const estado = document.querySelector('#estado');
   const aviso = document.querySelector('#aviso');
+  const formulario = document.querySelector('#form-sesion');
+  const sesionActivaTexto = document.querySelector('#sesion-activa');
+  const botonCapturar = document.querySelector('#capturar');
+  const labelName = document.querySelector('#label-name');
+  const mediumId = document.querySelector('#medium-id');
+  const sourceContent = document.querySelector('#source-content');
   let capturando = false;
+  let sesionActiva = false;
+  let formularioSucio = false;
+
+  function adaptarCamposAtaque() {
+    const esReal = labelName.value === 'real';
+    const esPantalla = labelName.value === 'spoof_screen';
+    mediumId.disabled = esReal;
+    mediumId.required = !esReal;
+    sourceContent.disabled = !esPantalla;
+    sourceContent.required = esPantalla;
+    if (esReal) mediumId.value = '';
+    if (!esPantalla) sourceContent.value = 'none';
+  }
+
+  function mostrarSesion(sesion) {
+    if (formularioSucio) {
+      sesionActiva = false;
+      botonCapturar.disabled = true;
+      sesionActivaTexto.textContent =
+        'Hay cambios pendientes: guarda la sesión antes de tomar fotografías.';
+      return;
+    }
+    sesionActiva = Boolean(sesion);
+    botonCapturar.disabled = !sesionActiva;
+    if (!sesion) {
+      sesionActivaTexto.textContent = 'Completa los datos antes de tomar fotografías.';
+      return;
+    }
+    const alias = sesion.person_alias ? ` · ${sesion.person_alias}` : '';
+    sesionActivaTexto.textContent =
+      `Sesión activa: ${sesion.person_id}${alias} · ${sesion.session_id} · ` +
+      `${sesion.label_name} · grupo ${sesion.capture_group_id}`;
+  }
 
   async function actualizarEstado() {
     try {
       const respuesta = await fetch('/api/status', {cache: 'no-store'});
       const datos = await respuesta.json();
-      estado.textContent = `Fotos ${datos.fotos} · ${datos.fps.toFixed(1)} FPS`;
+      estado.textContent =
+        `Fotos sesión ${datos.fotos_sesion} · total ${datos.fotos} · ` +
+        `${datos.fps.toFixed(1)} FPS`;
       if (datos.error) estado.textContent += ` · ERROR: ${datos.error}`;
+      mostrarSesion(datos.sesion);
     } catch (_) {
       estado.textContent = 'Servidor desconectado';
     }
   }
 
+  formulario.addEventListener('submit', async event => {
+    event.preventDefault();
+    const datos = Object.fromEntries(new FormData(formulario).entries());
+    try {
+      const respuesta = await fetch('/api/session', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(datos),
+      });
+      const resultado = await respuesta.json();
+      if (!respuesta.ok) throw new Error(resultado.error || 'Datos inválidos');
+      formulario.elements.session_id.value = resultado.sesion.session_id;
+      formularioSucio = false;
+      mostrarSesion(resultado.sesion);
+      actualizarEstado();
+    } catch (error) {
+      sesionActivaTexto.textContent = `ERROR: ${error.message}`;
+    }
+  });
+  formulario.addEventListener('input', () => {
+    formularioSucio = true;
+    mostrarSesion(null);
+  });
+
   async function capturar() {
-    if (capturando) return;
+    if (capturando || !sesionActiva) return;
     capturando = true;
     try {
       const respuesta = await fetch('/api/capture', {method: 'POST'});
       const datos = await respuesta.json();
       if (!respuesta.ok) throw new Error(datos.error || 'No se pudo capturar');
+      aviso.textContent = `FOTO ${datos.image_id}`;
       aviso.classList.add('visible');
       setTimeout(() => aviso.classList.remove('visible'), 500);
       actualizarEstado();
@@ -99,17 +253,21 @@ PAGINA = """<!doctype html>
     }
   }
 
-  document.querySelector('#capturar').addEventListener('click', capturar);
+  botonCapturar.addEventListener('click', capturar);
   document.querySelector('#detener').addEventListener('click', async () => {
     await fetch('/api/stop', {method: 'POST'});
     estado.textContent = 'Captura finalizada';
   });
   document.addEventListener('keydown', event => {
-    if (event.code === 'Space' && !event.repeat) {
+    const escribiendo = ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON']
+      .includes(event.target.tagName);
+    if (event.code === 'Space' && !event.repeat && !escribiendo) {
       event.preventDefault();
       capturar();
     }
   });
+  labelName.addEventListener('change', adaptarCamposAtaque);
+  adaptarCamposAtaque();
   setInterval(actualizarEstado, 500);
   actualizarEstado();
 </script>
@@ -121,18 +279,21 @@ PAGINA = """<!doctype html>
 class EstadoWeb:
     """Comparte el último cuadro con el codificador y el servidor HTTP."""
 
-    def __init__(self, nombre, guardador):
+    def __init__(self, nombre, guardador, camera_id="arducam_ov5647"):
         self.nombre = nombre
         self.guardador = guardador
+        self.camera_id = camera_id
         self._lock = threading.Lock()
         self._condicion = threading.Condition(self._lock)
         self._imagen = None
         self._jpeg = None
         self._version = 0
         self._fotos = 0
+        self._fotos_sesion = 0
         self._fps = 0.0
         self._error = None
         self._detenido = False
+        self._sesion = None
 
     def publicar_imagen(self, imagen):
         with self._lock:
@@ -160,16 +321,38 @@ class EstadoWeb:
     def capturar(self):
         with self._lock:
             imagen = self._imagen
+            sesion = dict(self._sesion) if self._sesion is not None else None
 
         if imagen is None:
             raise RuntimeError("Todavia no hay una imagen disponible")
 
-        if not self.guardador.agregar(self.nombre, imagen):
+        try:
+            metadatos = crear_metadatos_captura(
+                sesion,
+                self.camera_id,
+                imagen,
+            )
+        except ValueError as error:
+            raise RuntimeError(str(error)) from error
+
+        if not self.guardador.agregar(self.nombre, imagen, metadatos):
             raise RuntimeError("La cola de guardado esta llena")
 
         with self._lock:
             self._fotos += 1
-            return self._fotos
+            self._fotos_sesion += 1
+            return {
+                "fotos": self._fotos,
+                "fotos_sesion": self._fotos_sesion,
+                "image_id": metadatos["image_id"],
+            }
+
+    def configurar_sesion(self, datos):
+        sesion = normalizar_metadatos_sesion(datos)
+        with self._lock:
+            self._sesion = sesion
+            self._fotos_sesion = 0
+            return dict(self._sesion)
 
     def informar_error(self, error):
         with self._lock:
@@ -177,10 +360,19 @@ class EstadoWeb:
 
     def estado(self):
         with self._lock:
+            error_guardado = (
+                self.guardador.errores[-1]
+                if getattr(self.guardador, "errores", None)
+                else None
+            )
             return {
                 "fotos": self._fotos,
+                "fotos_sesion": self._fotos_sesion,
                 "fps": self._fps,
-                "error": self._error,
+                "error": self._error or error_guardado,
+                "sesion": (
+                    dict(self._sesion) if self._sesion is not None else None
+                ),
             }
 
     def detener(self):
@@ -220,13 +412,25 @@ def crear_handler(estado, pagina):
 
     class Handler(BaseHTTPRequestHandler):
         def enviar_json(self, datos, estado_http=200):
-            cuerpo = json.dumps(datos).encode("utf-8")
+            cuerpo = json.dumps(datos, ensure_ascii=False).encode("utf-8")
             self.send_response(estado_http)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(cuerpo)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(cuerpo)
+
+        def leer_json(self):
+            try:
+                longitud = int(self.headers.get("Content-Length", "0"))
+            except ValueError as error:
+                raise ValueError("Content-Length no valido") from error
+            if longitud <= 0 or longitud > 16_384:
+                raise ValueError("Cuerpo JSON vacio o demasiado grande")
+            try:
+                return json.loads(self.rfile.read(longitud).decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise ValueError("JSON no valido") from error
 
         def do_GET(self):
             if self.path == "/":
@@ -277,13 +481,22 @@ def crear_handler(estado, pagina):
             self.send_error(404)
 
         def do_POST(self):
+            if self.path == "/api/session":
+                try:
+                    sesion = estado.configurar_sesion(self.leer_json())
+                except ValueError as error:
+                    self.enviar_json({"error": str(error)}, 400)
+                else:
+                    self.enviar_json({"sesion": sesion})
+                return
+
             if self.path == "/api/capture":
                 try:
-                    fotos = estado.capturar()
+                    resultado = estado.capturar()
                 except RuntimeError as error:
                     self.enviar_json({"error": str(error)}, 409)
                 else:
-                    self.enviar_json({"fotos": fotos})
+                    self.enviar_json(resultado)
                 return
 
             if self.path == "/api/stop":
@@ -304,7 +517,14 @@ def crear_handler(estado, pagina):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--nombre", required=True, type=validar_nombre)
+    parser.add_argument(
+        "--nombre",
+        default="capturas",
+        help=(
+            "Nombre legado de la captura. Los nuevos IDs se ingresan "
+            "en la pagina web."
+        ),
+    )
     parser.add_argument(
         "--config",
         type=Path,
@@ -320,6 +540,7 @@ def main():
     parser.add_argument("--vista-fps", type=float, default=20.0)
     parser.add_argument("--vista-ancho", type=int, default=640)
     parser.add_argument("--calidad-jpeg", type=int, default=60)
+    parser.add_argument("--camera-id", default="arducam_ov5647")
     args = parser.parse_args()
 
     if not 1 <= args.puerto <= 65535:
@@ -340,12 +561,11 @@ def main():
         raise RuntimeError("No se pudo abrir la camara")
 
     guardador = Guardador(args.salida)
-    estado = EstadoWeb(args.nombre, guardador)
+    estado = EstadoWeb(args.nombre, guardador, args.camera_id)
     detener = threading.Event()
-    pagina = PAGINA.replace("__NOMBRE__", html.escape(args.nombre))
     servidor = ThreadingHTTPServer(
         ("127.0.0.1", args.puerto),
-        crear_handler(estado, pagina),
+        crear_handler(estado, PAGINA),
     )
 
     def adquirir():
@@ -412,8 +632,10 @@ def main():
 
     print("Capturador web iniciado.")
     print(f"En el Mac abri: http://localhost:{args.puerto}")
+    print("Completa los metadatos en el navegador antes de tomar fotos.")
     print("ESPACIO=guardar foto | boton Finalizar=cerrar")
     print("Las fotografias se guardaran en:", args.salida.resolve())
+    print("El manifiesto se guardara en:", (args.salida / "metadata.csv").resolve())
 
     try:
         servidor.serve_forever(poll_interval=0.2)

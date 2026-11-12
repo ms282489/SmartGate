@@ -1,6 +1,7 @@
 """Worker encargado de detectar rostros."""
 
 import time
+from pathlib import Path
 
 import cv2
 
@@ -9,9 +10,13 @@ from core.camara import crear_camara
 from core.states import MensajePipeline
 
 
+CARPETA_PROYECTO = Path(__file__).resolve().parents[3]
 RUTA_MODELO = (
-    "app/Tareas/deteccion/"
-    "face_detection_yunet_2023mar.onnx"
+    CARPETA_PROYECTO
+    / "app"
+    / "Tareas"
+    / "deteccion"
+    / "face_detection_yunet_2023mar.onnx"
 )
 
 ESCALA_ANTISPOOF = 2.7
@@ -168,7 +173,7 @@ def deteccion_worker(
     # Cargar el modelo
     try:
         detector = cv2.FaceDetectorYN.create(
-            RUTA_MODELO,
+            str(RUTA_MODELO),
             "",
             (ancho_inferencia, alto_inferencia),
             umbral_deteccion,

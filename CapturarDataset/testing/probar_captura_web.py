@@ -24,10 +24,24 @@ from capturar_dataset_web import (  # noqa: E402
 class GuardadorFalso:
     def __init__(self):
         self.guardadas = []
+        self.errores = []
 
-    def agregar(self, nombre, imagen):
-        self.guardadas.append((nombre, imagen.copy()))
+    def agregar(self, nombre, imagen, metadatos=None):
+        self.guardadas.append((nombre, imagen.copy(), dict(metadatos)))
         return True
+
+
+DATOS_SESION = {
+    "person_id": "p001",
+    "person_alias": "Mateo",
+    "session_id": "s01",
+    "label_name": "spoof_screen",
+    "medium_id": "phone01",
+    "source_content": "photo",
+    "lighting": "natural",
+    "location": "porton",
+    "notes": "prueba",
+}
 
 
 imagen = np.zeros((960, 1280, 3), dtype=np.uint8)
@@ -46,21 +60,37 @@ guardador = GuardadorFalso()
 estado = EstadoWeb("real_mateo", guardador)
 estado.publicar_imagen(imagen)
 
-assert estado.capturar() == 1
+try:
+    estado.capturar()
+except RuntimeError as error:
+    assert "datos de la sesion" in str(error)
+else:
+    raise AssertionError("Se permitio capturar sin configurar la sesion")
+
+sesion = estado.configurar_sesion(DATOS_SESION)
+resultado = estado.capturar()
+assert resultado["fotos"] == 1
+assert resultado["fotos_sesion"] == 1
+assert resultado["image_id"].startswith("img_")
 assert len(guardador.guardadas) == 1
 assert guardador.guardadas[0][0] == "real_mateo"
 assert guardador.guardadas[0][1].shape == (960, 1280, 3)
+assert guardador.guardadas[0][2]["image_id"] == resultado["image_id"]
+assert guardador.guardadas[0][2]["person_id"] == "p001"
+assert guardador.guardadas[0][2]["width"] == 1280
+assert guardador.guardadas[0][2]["height"] == 960
 
 estado.publicar_preview(jpeg, 19.8)
 version, jpeg_publicado, detenido = estado.esperar_preview(-1, timeout=0)
 assert version == 1
 assert jpeg_publicado == jpeg
 assert detenido is False
-assert estado.estado() == {
-    "fotos": 1,
-    "fps": 19.8,
-    "error": None,
-}
+estado_actual = estado.estado()
+assert estado_actual["fotos"] == 1
+assert estado_actual["fotos_sesion"] == 1
+assert estado_actual["fps"] == 19.8
+assert estado_actual["error"] is None
+assert estado_actual["sesion"] == sesion
 
 estado.detener()
 _version, _jpeg, detenido = estado.esperar_preview(version, timeout=0)
@@ -81,11 +111,28 @@ with urlopen(f"{url_base}/", timeout=2) as respuesta:
     assert respuesta.status == 200
     assert b"SmartGate" in respuesta.read()
 
+contenido = json.dumps(DATOS_SESION).encode("utf-8")
+with urlopen(
+    Request(
+        f"{url_base}/api/session",
+        data=contenido,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    ),
+    timeout=2,
+) as respuesta:
+    sesion_http = json.loads(respuesta.read())["sesion"]
+    assert sesion_http["person_id"] == "p001"
+    assert sesion_http["capture_group_id"].startswith("cap_")
+
 with urlopen(
     Request(f"{url_base}/api/capture", method="POST"),
     timeout=2,
 ) as respuesta:
-    assert json.loads(respuesta.read()) == {"fotos": 1}
+    captura_http = json.loads(respuesta.read())
+    assert captura_http["fotos"] == 1
+    assert captura_http["fotos_sesion"] == 1
+    assert captura_http["image_id"].startswith("img_")
 
 with urlopen(f"{url_base}/api/status", timeout=2) as respuesta:
     assert json.loads(respuesta.read())["fotos"] == 1
@@ -100,4 +147,4 @@ hilo_servidor.join(timeout=2)
 assert not hilo_servidor.is_alive()
 servidor.server_close()
 
-print("Vista JPEG, servidor web y captura completa: correctos")
+print("Vista, formulario, IDs, servidor web y captura: correctos")

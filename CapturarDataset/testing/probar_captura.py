@@ -1,5 +1,6 @@
 """Comprueba nombres y guardado JPEG sin acceder a una cámara."""
 
+import csv
 import sys
 import tempfile
 from pathlib import Path
@@ -15,6 +16,8 @@ from capturar_dataset import (  # noqa: E402
     RAIZ_PROYECTO,
     SALIDA_PREDETERMINADA,
     Guardador,
+    crear_metadatos_captura,
+    normalizar_metadatos_sesion,
     validar_nombre,
 )
 
@@ -54,4 +57,46 @@ with tempfile.TemporaryDirectory() as temporal:
     guardador.cerrar()
     assert (salida / "real_mateo" / "real_mateo_0003.jpg").exists()
 
-print("Nombres, ruta del dataset y guardado JPEG: correctos")
+    sesion = normalizar_metadatos_sesion(
+        {
+            "person_id": "p001",
+            "person_alias": "Mateo",
+            "session_id": "s01",
+            "label_name": "spoof_screen",
+            "medium_id": "phone01",
+            "source_content": "video",
+            "lighting": "artificial",
+            "location": "laboratorio",
+            "notes": "brillo alto",
+        }
+    )
+    metadatos = crear_metadatos_captura(
+        sesion,
+        "arducam_ov5647",
+        imagen,
+    )
+    guardador = Guardador(salida)
+    assert guardador.agregar("ignorado", imagen, metadatos)
+    guardador.cerrar()
+
+    foto = (
+        salida
+        / "spoof_screen"
+        / "p001"
+        / "s01"
+        / f"{metadatos['image_id']}.jpg"
+    )
+    assert foto.exists()
+    with (salida / "metadata.csv").open(newline="", encoding="utf-8") as archivo:
+        filas = list(csv.DictReader(archivo))
+    assert len(filas) == 1
+    assert filas[0]["image_id"] == metadatos["image_id"]
+    assert filas[0]["image_path"] == foto.relative_to(salida).as_posix()
+    assert filas[0]["person_id"] == "p001"
+    assert filas[0]["person_alias"] == "Mateo"
+    assert filas[0]["label_id"] == "2"
+    assert filas[0]["capture_group_id"] == sesion["capture_group_id"]
+    assert filas[0]["width"] == "64"
+    assert filas[0]["height"] == "48"
+
+print("Nombres, JPEG, IDs y metadata.csv: correctos")

@@ -1,4 +1,5 @@
 import signal
+from pathlib import Path
 from queue import Queue
 from threading import Thread
 
@@ -32,12 +33,12 @@ from Tareas.telemetria.telemetria_worker import (
 )
 
 
+CARPETA_PROYECTO = Path(__file__).resolve().parent.parent
+RUTA_CONFIG = CARPETA_PROYECTO / "config" / "config.yaml"
+
+
 # Leer la configuración
-with open(
-    "config/config.yaml",
-    "r",
-    encoding="utf-8",
-) as archivo:
+with RUTA_CONFIG.open("r", encoding="utf-8") as archivo:
     config = yaml.safe_load(archivo)
 
 

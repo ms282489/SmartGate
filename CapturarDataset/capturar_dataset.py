@@ -1,11 +1,14 @@
 """Captura independiente de fotografías para el dataset SmartGate."""
 
 import argparse
+import csv
 import os
 import queue
 import re
 import threading
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import cv2
@@ -16,6 +19,44 @@ from camara import crear_camara
 RAIZ_PROYECTO = Path(__file__).resolve().parent.parent
 SALIDA_PREDETERMINADA = RAIZ_PROYECTO / "dataset"
 
+ETIQUETAS = {
+    "spoof_print": 0,
+    "real": 1,
+    "spoof_screen": 2,
+}
+
+ILUMINACIONES = {
+    "unknown",
+    "natural",
+    "artificial",
+    "low",
+    "backlight",
+    "mixed",
+}
+
+CONTENIDOS_ORIGEN = {"none", "photo", "video"}
+
+CAMPOS_METADATA = [
+    "image_id",
+    "image_path",
+    "captured_at_utc",
+    "person_id",
+    "person_alias",
+    "session_id",
+    "capture_group_id",
+    "label_id",
+    "label_name",
+    "attack_type",
+    "medium_id",
+    "source_content",
+    "lighting",
+    "location",
+    "camera_id",
+    "width",
+    "height",
+    "notes",
+]
+
 
 def validar_nombre(nombre):
     if not re.fullmatch(r"[A-Za-z0-9_-]+", nombre):
@@ -23,21 +64,203 @@ def validar_nombre(nombre):
     return nombre
 
 
+def validar_identificador(valor, campo):
+    """Valida IDs destinados a carpetas y al manifiesto del dataset."""
+
+    valor = str(valor or "").strip()
+    if not valor:
+        raise ValueError(f"{campo} es obligatorio")
+    if len(valor) > 64:
+        raise ValueError(f"{campo} no puede superar 64 caracteres")
+    try:
+        return validar_nombre(valor)
+    except ValueError as error:
+        raise ValueError(
+            f"{campo} solo admite letras ASCII, numeros, _ y -"
+        ) from error
+
+
+def _texto_corto(valor, campo, maximo):
+    valor = str(valor or "").strip()
+    if len(valor) > maximo:
+        raise ValueError(f"{campo} no puede superar {maximo} caracteres")
+    return valor
+
+
+def normalizar_metadatos_sesion(datos):
+    """Valida los datos elegidos una vez al comenzar una captura."""
+
+    if not isinstance(datos, dict):
+        raise ValueError("Los datos de sesion deben ser un objeto JSON")
+
+    person_id = validar_identificador(datos.get("person_id"), "person_id")
+    label_name = str(datos.get("label_name") or "").strip()
+    if label_name not in ETIQUETAS:
+        raise ValueError("label_name debe ser real, spoof_print o spoof_screen")
+
+    session_id = str(datos.get("session_id") or "").strip()
+    if not session_id:
+        session_id = datetime.now().strftime("s_%Y%m%d_%H%M%S")
+    session_id = validar_identificador(session_id, "session_id")
+
+    lighting = str(datos.get("lighting") or "unknown").strip()
+    if lighting not in ILUMINACIONES:
+        raise ValueError("Condicion de iluminacion no valida")
+
+    source_content = str(datos.get("source_content") or "none").strip()
+    if source_content not in CONTENIDOS_ORIGEN:
+        raise ValueError("Contenido de origen no valido")
+
+    medium_id = str(datos.get("medium_id") or "").strip()
+    if label_name == "real":
+        medium_id = "none"
+        source_content = "none"
+    else:
+        medium_id = validar_identificador(medium_id, "medium_id")
+
+    if label_name == "spoof_screen" and source_content == "none":
+        raise ValueError(
+            "Para una pantalla indica si se muestra una foto o un video"
+        )
+
+    return {
+        "person_id": person_id,
+        "person_alias": _texto_corto(
+            datos.get("person_alias"),
+            "person_alias",
+            120,
+        ),
+        "session_id": session_id,
+        "capture_group_id": "cap_" + uuid.uuid4().hex[:16],
+        "label_id": ETIQUETAS[label_name],
+        "label_name": label_name,
+        "attack_type": (
+            "none"
+            if label_name == "real"
+            else label_name.removeprefix("spoof_")
+        ),
+        "medium_id": medium_id,
+        "source_content": source_content,
+        "lighting": lighting,
+        "location": _texto_corto(datos.get("location"), "location", 120),
+        "notes": _texto_corto(datos.get("notes"), "notes", 500),
+    }
+
+
+def crear_metadatos_captura(sesion, camera_id, imagen):
+    """Crea la identidad inmutable de una fotografía concreta."""
+
+    if sesion is None:
+        raise ValueError("Primero debes guardar los datos de la sesion")
+
+    metadatos = dict(sesion)
+    metadatos.update(
+        {
+            "image_id": "img_" + uuid.uuid4().hex,
+            "captured_at_utc": datetime.now(timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z"),
+            "camera_id": validar_identificador(camera_id, "camera_id"),
+            "width": int(imagen.shape[1]),
+            "height": int(imagen.shape[0]),
+        }
+    )
+    return metadatos
+
+
 class Guardador:
     def __init__(self, raiz):
         self.raiz = Path(raiz)
         self.cola = queue.Queue(maxsize=32)
         self.errores = []
+        self._metadata_inicializado = False
         self.hilo = threading.Thread(target=self._trabajar, daemon=False)
         self.hilo.start()
 
-    def agregar(self, nombre, imagen):
+    def agregar(self, nombre, imagen, metadatos=None):
         try:
-            self.cola.put_nowait((nombre, imagen.copy()))
+            self.cola.put_nowait(
+                (
+                    nombre,
+                    imagen.copy(),
+                    dict(metadatos) if metadatos is not None else None,
+                )
+            )
             return True
         except queue.Full:
             print("Cola de guardado llena; foto no capturada")
             return False
+
+    def _reservar_destino_legacy(self, nombre):
+        carpeta = self.raiz / nombre
+        carpeta.mkdir(parents=True, exist_ok=True)
+        numero = 1
+        while True:
+            destino = carpeta / f"{nombre}_{numero:04d}.jpg"
+            try:
+                descriptor = os.open(
+                    destino,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                )
+                return destino, descriptor
+            except FileExistsError:
+                numero += 1
+
+    def _reservar_destino_metadata(self, metadatos):
+        for campo in (
+            "image_id",
+            "person_id",
+            "session_id",
+            "label_name",
+        ):
+            validar_identificador(metadatos.get(campo), campo)
+
+        carpeta = (
+            self.raiz
+            / metadatos["label_name"]
+            / metadatos["person_id"]
+            / metadatos["session_id"]
+        )
+        carpeta.mkdir(parents=True, exist_ok=True)
+        destino = carpeta / f"{metadatos['image_id']}.jpg"
+        descriptor = os.open(
+            destino,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        return destino, descriptor
+
+    def _agregar_metadata(self, destino, metadatos):
+        ruta = self.raiz / "metadata.csv"
+        fila = dict(metadatos)
+        fila["image_path"] = destino.relative_to(self.raiz).as_posix()
+
+        if not self._metadata_inicializado and ruta.exists() and ruta.stat().st_size:
+            with ruta.open(newline="", encoding="utf-8") as archivo:
+                encabezado = next(csv.reader(archivo), [])
+            if encabezado != CAMPOS_METADATA:
+                raise RuntimeError(
+                    "metadata.csv tiene un encabezado incompatible; "
+                    "no se agregaron datos"
+                )
+            self._metadata_inicializado = True
+
+        escribir_encabezado = not ruta.exists() or ruta.stat().st_size == 0
+        with ruta.open("a", newline="", encoding="utf-8") as archivo:
+            escritor = csv.DictWriter(
+                archivo,
+                fieldnames=CAMPOS_METADATA,
+                extrasaction="ignore",
+            )
+            if escribir_encabezado:
+                escritor.writeheader()
+            escritor.writerow(
+                {campo: fila.get(campo, "") for campo in CAMPOS_METADATA}
+            )
+            archivo.flush()
+            os.fsync(archivo.fileno())
+        self._metadata_inicializado = True
 
     def _trabajar(self):
         while True:
@@ -45,22 +268,11 @@ class Guardador:
             try:
                 if item is None:
                     return
-                nombre, imagen = item
-                carpeta = self.raiz / nombre
-                carpeta.mkdir(parents=True, exist_ok=True)
-                # Enumerar en el escritor evita colisiones entre capturas pendientes.
-                numero = 1
-                while True:
-                    destino = carpeta / f"{nombre}_{numero:04d}.jpg"
-                    try:
-                        fd = os.open(
-                            destino,
-                            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                            0o600,
-                        )
-                        break
-                    except FileExistsError:
-                        numero += 1
+                nombre, imagen, metadatos = item
+                if metadatos is None:
+                    destino, fd = self._reservar_destino_legacy(nombre)
+                else:
+                    destino, fd = self._reservar_destino_metadata(metadatos)
                 try:
                     ok, datos = cv2.imencode(
                         ".jpg",
@@ -71,6 +283,8 @@ class Guardador:
                         raise RuntimeError("No se pudo codificar el JPEG")
                     with os.fdopen(fd, "wb") as archivo:
                         archivo.write(datos.tobytes())
+                    if metadatos is not None:
+                        self._agregar_metadata(destino, metadatos)
                     print(f"Guardada: {destino}")
                 except Exception:
                     try:

@@ -1,5 +1,7 @@
 """Worker encargado de detectar intentos de engaño."""
 
+from pathlib import Path
+
 import cv2
 import numpy as np
 
@@ -8,9 +10,13 @@ from core.buffers import tomar_buffer2
 from core.states import MensajePipeline, ResultadoPipeline
 
 
+CARPETA_PROYECTO = Path(__file__).resolve().parents[3]
 RUTA_MODELO = (
-    "app/Tareas/antispoof/"
-    "MiniFASNetV2.onnx"
+    CARPETA_PROYECTO
+    / "app"
+    / "Tareas"
+    / "antispoof"
+    / "MiniFASNetV2.onnx"
 )
 
 
@@ -26,7 +32,7 @@ def antispoof_worker(
 
     # Cargar el modelo
     try:
-        modelo = cv2.dnn.readNetFromONNX(RUTA_MODELO)
+        modelo = cv2.dnn.readNetFromONNX(str(RUTA_MODELO))
 
     except Exception as error:
         print("No se pudo cargar el modelo antispoofing:", error)
