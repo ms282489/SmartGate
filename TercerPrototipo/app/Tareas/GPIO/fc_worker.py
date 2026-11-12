@@ -25,6 +25,9 @@ def fc_worker(
                 == gpiod.EdgeEvent.Type.RISING_EDGE
             ):
                 sincronizacion.gate_closed.clear()
+                # Cortar el detector en el mismo hilo que recibió el flanco.
+                # El gestor hará luego la limpieza y aplicará la pausa de 10 s.
+                sincronizacion.detection_enabled.clear()
 
                 # Avisar al Pipeline Manager
                 cola_mensajes.put(

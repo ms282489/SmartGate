@@ -15,6 +15,8 @@ Se comprueba:
 - La existencia y contenido de `embeddings.npy`.
 - La configuración de telemetría.
 - La pausa posterior a una autorización y su reactivación automática.
+- La pausa de seguridad iniciada por una apertura física del portón.
+- El tiempo visible del LED de rechazo antes de reactivar la detección.
 - La entrada del detector a IDLE tras 5 segundos sin rostros.
 - El sondeo de bajo consumo y el escalado de coordenadas de YuNet.
 - Los estados principales del pipeline.
@@ -31,7 +33,9 @@ busca sin una pausa artificial mientras el sistema está activo. Después de 5
 segundos sin rostros pasa a IDLE y sondea cada 0,2 segundos. Al encontrar una
 cara procesa ese mismo cuadro. Después de autorizar una identidad y volver a
 IDLE, el detector permanece deshabilitado durante 10 segundos para no repetir
-el acceso de la misma persona.
+el acceso de la misma persona. Cualquier señal de apertura física también
+detiene el detector durante al menos 10 segundos y, si el portón permanece
+abierto, la detección no se reanuda hasta que vuelva a cerrarse.
 
 La detección inicial se ejecuta sobre una copia de 640x480 para reducir el
 tiempo de inferencia. El antispoofing y el reconocimiento conservan la imagen

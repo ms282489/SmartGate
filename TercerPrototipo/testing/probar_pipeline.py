@@ -156,7 +156,6 @@ assert estado is PipelineState.IDLE
 assert comandos == [
     "ACTIVO",
     "PROCESANDO",
-    "ACTIVO",
     "APAGAR",
 ]
 assert telemetria == []
@@ -274,4 +273,103 @@ assert comandos == [
 ]
 
 print("Prueba de pausa después de autorización: correcta")
+
+
+# El rechazo debe conservar el LED rojo durante el tiempo configurado y luego
+# volver a ACTIVO sin bloquear el gestor del pipeline.
+vaciar_cola(gpio_comando_queue)
+vaciar_cola(telemetria_queue)
+sincronizacion = create_synchronization()
+sincronizacion.gate_closed.set()
+cola_mensajes = Queue()
+cola_mensajes.put(MensajePipeline.CANDIDATO_DETECTADO)
+cola_mensajes.put(MensajePipeline.IDENTIDAD_RECHAZADA)
+
+
+def apagar_despues_de_rechazo():
+    time.sleep(0.08)
+    cola_mensajes.put(MensajePipeline.APAGAR)
+
+
+hilo_apagado = Thread(target=apagar_despues_de_rechazo)
+hilo_apagado.start()
+inicio = time.monotonic()
+estado = ejecutar_pipeline(
+    sincronizacion,
+    cola_mensajes,
+    config={
+        "gate": {
+            "modo_solo_camara": False,
+            "resultado_visible_segundos": 0.04,
+        },
+    },
+)
+hilo_apagado.join()
+duracion = time.monotonic() - inicio
+comandos = vaciar_cola(gpio_comando_queue)
+
+assert estado is PipelineState.IDLE
+assert duracion >= 0.04
+assert comandos == [
+    "ACTIVO",
+    "PROCESANDO",
+    "RECHAZADO",
+    "ACTIVO",
+    "APAGAR",
+]
+
+print("Prueba de duración visible del rechazo: correcta")
+
+
+# Una apertura física debe deshabilitar la detección aunque no provenga de una
+# autorización y mantenerla pausada hasta que venza el plazo de seguridad.
+vaciar_cola(gpio_comando_queue)
+vaciar_cola(telemetria_queue)
+sincronizacion = create_synchronization()
+sincronizacion.gate_closed.set()
+cola_mensajes = Queue()
+cola_mensajes.put(MensajePipeline.PORTON_ABIERTO)
+cola_mensajes.put(MensajePipeline.PORTON_CERRADO)
+estado_durante_pausa = []
+
+
+def comprobar_pausa_y_apagar():
+    time.sleep(0.02)
+    estado_durante_pausa.append(
+        sincronizacion.detection_enabled.is_set()
+    )
+    time.sleep(0.06)
+    cola_mensajes.put(MensajePipeline.APAGAR)
+
+
+hilo_apagado = Thread(target=comprobar_pausa_y_apagar)
+hilo_apagado.start()
+inicio = time.monotonic()
+estado = ejecutar_pipeline(
+    sincronizacion,
+    cola_mensajes,
+    config={
+        "gate": {
+            "modo_solo_camara": False,
+            "resultado_visible_segundos": 0,
+        },
+        "detection": {
+            "gate_open_cooldown_seconds": 0.04,
+        },
+    },
+)
+hilo_apagado.join()
+duracion = time.monotonic() - inicio
+comandos = vaciar_cola(gpio_comando_queue)
+
+assert estado is PipelineState.IDLE
+assert estado_durante_pausa == [False]
+assert duracion >= 0.04
+assert comandos == [
+    "ACTIVO",
+    "ACTIVO",
+    "APAGAR",
+]
+
+print("Prueba de pausa por apertura física: correcta")
 print("Todas las pruebas del pipeline finalizaron correctamente")

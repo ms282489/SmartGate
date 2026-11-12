@@ -82,6 +82,9 @@ def gpio_manager(config, sincronizacion, cola_mensajes):
             sincronizacion.gate_closed.set()  # LOW: cerrado
         else:
             sincronizacion.gate_closed.clear()  # HIGH: no cerrado
+            # Aplicar también la pausa de seguridad cuando SmartGate arranca
+            # con el portón fuera de su posición cerrada.
+            cola_mensajes.put(MensajePipeline.PORTON_ABIERTO)
 
         fc_thread = threading.Thread(
             target=fc_worker,
