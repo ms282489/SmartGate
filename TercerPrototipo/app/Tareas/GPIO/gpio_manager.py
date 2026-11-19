@@ -28,7 +28,7 @@ def gpio_manager(config, sincronizacion, cola_mensajes):
     # implementación anterior.
     # Puede sobrescribirse desde el archivo YAML.
     fc_cerrado_activo_alto = bool(
-        gpio_config.get("final_carrera_cerrado_activo_alto", False)
+        gpio_config.get("final_carrera_cerrado_activo_alto", True)
     )
 
     valor_fc_cerrado = (

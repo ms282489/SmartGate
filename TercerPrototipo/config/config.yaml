@@ -72,9 +72,8 @@ supabase:
 gpio:
   chip: "/dev/gpiochip0"
 
-  # El final de carrera entrega HIGH únicamente cuando el portón está
-  # completamente cerrado. LOW significa abierto, abriendo o cerrando.
-  final_carrera_cerrado_activo_alto: true
+
+  final_carrera_cerrado_activo_alto: false
 
   pins:
     final_carrera: 17
