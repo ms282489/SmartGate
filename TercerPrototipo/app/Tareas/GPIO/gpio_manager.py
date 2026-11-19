@@ -1,3 +1,4 @@
+
 import threading
 
 import gpiod
@@ -18,9 +19,18 @@ def gpio_manager(config, sincronizacion, cola_mensajes):
     pin_led_aceptado = gpio_config["pins"]["led_aceptado"]
     pin_led_rechazado = gpio_config["pins"]["led_rechazado"]
     pin_abrir = gpio_config["pins"]["abrir_porton"]
+
+    # Final de carrera:
+    # ACTIVE   = portón abierto
+    # INACTIVE = portón cerrado
+    #
+    # Se invierte el valor predeterminado respecto a la
+    # implementación anterior.
+    # Puede sobrescribirse desde el archivo YAML.
     fc_cerrado_activo_alto = bool(
-        gpio_config.get("final_carrera_cerrado_activo_alto", True)
+        gpio_config.get("final_carrera_cerrado_activo_alto", False)
     )
+
     valor_fc_cerrado = (
         gpiod.line.Value.ACTIVE
         if fc_cerrado_activo_alto
@@ -28,13 +38,17 @@ def gpio_manager(config, sincronizacion, cola_mensajes):
     )
 
     pulse_tiempo = config["gate"]["pulse_tiempo"]
+
     modo_solo_camara = bool(
         config["gate"].get("modo_solo_camara", False)
     )
+
     frecuencia_procesando = config["leds"]["frecuencia_procesando_hz"]
 
     if frecuencia_procesando <= 0:
-        raise ValueError("leds.frecuencia_procesando_hz debe ser mayor que cero")
+        raise ValueError(
+            "leds.frecuencia_procesando_hz debe ser mayor que cero"
+        )
 
     fc_request = None
 
@@ -80,20 +94,26 @@ def gpio_manager(config, sincronizacion, cola_mensajes):
 
     if modo_solo_camara:
         sincronizacion.gate_closed.set()
+
         print(
             "Modo solo cámara activo: "
             "se omite el final de carrera y la apertura del portón"
         )
+
     else:
         # Leer el FC al iniciar; no esperar al primer flanco.
         fc_value = fc_request.get_value(pin_fc)
+
         if fc_value == valor_fc_cerrado:
+            # Portón cerrado: habilitar procesamiento.
             sincronizacion.gate_closed.set()
         else:
+            # Portón abierto: bloquear procesamiento.
             sincronizacion.gate_closed.clear()
-            # SmartGate también debe arrancar bloqueado cuando no recibe la
-            # señal física de portón completamente cerrado.
-            cola_mensajes.put(MensajePipeline.PORTON_ABIERTO)
+
+            cola_mensajes.put(
+                MensajePipeline.PORTON_ABIERTO
+            )
 
         fc_thread = threading.Thread(
             target=fc_worker,
@@ -124,4 +144,5 @@ def gpio_manager(config, sincronizacion, cola_mensajes):
 
     if fc_thread is not None:
         fc_thread.start()
+
     command_thread.start()
