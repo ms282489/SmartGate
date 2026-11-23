@@ -1,0 +1,100 @@
+\chapter{Desarrollo, pruebas y resultados}
+\label{cap:desarrollo}
+
+\section{Desarrollo e implementación del MVP}
+
+El MVP se definió como el conjunto mínimo de componentes necesarios para reconocer a una persona autorizada, descartar intentos básicos de suplantación y accionar el acceso físico. Su objetivo no era ofrecer desde el inicio todas las funciones de administración o conectividad, sino validar que el sistema pudiera completar el ciclo principal de forma autónoma sobre la Raspberry Pi.
+
+\subsection{Pipeline de visión y decisión}
+
+El núcleo del MVP corresponde a la cadena cámara--detección--antispoofing--reconocimiento--decisión descrita en el capítulo~\ref{cap:programa}. Se construyó primero con modelos previamente entrenados, integrados mediante workers y buffers sincronizados.
+
+\subsection{Control físico y funcionamiento local}
+
+Una vez validado el pipeline de visión, se incorporaron las entradas y salidas GPIO, la señalización luminosa, el pulso de apertura y la lectura del final de carrera. El ciclo del MVP quedó completo cuando la Raspberry Pi pudo detectar al usuario, validar su identidad, indicar el resultado, accionar la central del portón y esperar su apertura y cierre antes de habilitar un nuevo intento.
+
+El procesamiento principal se ejecuta localmente. Por lo tanto, la decisión de acceso no depende de enviar cada imagen a un servidor externo. Esta característica reduce la latencia y mantiene el funcionamiento básico aun cuando la conexión a Internet no se encuentra disponible, siempre que exista una galería local previamente sincronizada.
+
+\subsection{Resultado del MVP}
+
+Al finalizar esta etapa quedaron implementados los siguientes componentes:
+
+\begin{itemize}
+    \item Adquisición de imágenes desde la cámara.
+    \item Detección, comprobación de vida y reconocimiento facial.
+    \item Comparación contra una galería local de usuarios.
+    \item Decisión de acceso y clasificación de intentos de suplantación.
+    \item Señalización de los estados activo, procesando, aceptado y rechazado.
+    \item Accionamiento de la central del portón y supervisión del final de carrera.
+    \item Registro básico del resultado de cada intento.
+\end{itemize}
+
+Estos elementos forman el núcleo indispensable de SmartGate. Las funciones desarrolladas posteriormente amplían la administración, la trazabilidad y la robustez.
+
+\section{Pruebas con personas y errores observados}
+
+Para evaluar el comportamiento real del sistema se realizaron pruebas repetidas con distintas personas. Los ensayos buscaron observar tanto falsos positivos como falsos negativos en las etapas de detección, antispoofing y reconocimiento, incluyendo usuarios registrados y personas que no formaban parte de la galería autorizada.
+
+En el conjunto de pruebas efectuado se registró una única clasificación incorrecta. El error estuvo asociado al módulo de antispoofing y no a la comparación de identidad realizada por SFace. Considerando que los modelos utilizados no habían sido entrenados específicamente con imágenes obtenidas en el entorno de SmartGate, obtener un solo error después de probar el sistema con varias personas representó un resultado muy favorable para el prototipo.
+
+Estas pruebas también reforzaron la utilidad del entrenamiento que había sido planificado como extra. Un conjunto de datos propio, con ejemplos capturados por la cámara definitiva y bajo las condiciones reales de iluminación, distancia y pose, habría permitido ajustar especialmente el antispoofing y posiblemente reducir todavía más este tipo de error. Sin embargo, al no contarse con una cantidad suficiente de muestras, los resultados deben interpretarse como una validación funcional y no como una medición estadística definitiva de la tasa de falsos positivos o falsos negativos.
+
+\section{Funcionalidades adicionales}
+
+\subsection{Extras implementados}
+
+Una vez estabilizado el MVP se incorporaron las funcionalidades adicionales priorizadas para el proyecto, descritas en los capítulos~\ref{cap:programa} y~\ref{cap:datos}:
+
+\begin{itemize}
+    \item La base de datos de Supabase permitió centralizar usuarios, embeddings y eventos de acceso, mientras que la interfaz web simplificó las altas, bajas y cambios de habilitación. También se agregó la sincronización periódica de la galería sin interrumpir el reconocimiento en curso.
+    \item Para evitar que una interrupción de red detuviera el sistema se desarrolló una caché local persistente con la última galería válida y un archivo de eventos pendientes. Cuando no hay conexión, la placa continúa reconociendo a los usuarios almacenados localmente y conserva los nuevos eventos. Al recuperar Internet, envía primero los registros acumulados y luego continúa con los eventos nuevos.
+    \item También se configuró systemd para iniciar el programa automáticamente al encender la Raspberry Pi, reiniciarlo ante fallos y facilitar la consulta de su estado.
+\end{itemize}
+
+Junto con la modularización, la telemetría y el manejo de errores, estas funciones mejoran la autonomía necesaria para un dispositivo que debe operar sin intervención constante.
+
+\subsection{Herramienta para la construcción del dataset}
+
+Como parte del extra asociado a modelos propios se desarrolló un script de adquisición de datos. El programa levantaba un servidor local en un puerto de la computadora y ofrecía una interfaz accesible desde el navegador. Desde esa interfaz era posible completar los metadatos definidos para cada muestra y controlar la toma de fotografías. Las imágenes y su información asociada se guardaban de forma organizada para formar el dataset que posteriormente se utilizaría durante el entrenamiento.
+
+Esta herramienta permitía estandarizar la recolección y reducir errores de identificación o clasificación manual. Además, dejaba preparada una base reutilizable para continuar capturando datos con distintas personas y condiciones de iluminación, distancia, pose y presentación frente a la cámara.
+
+Sin embargo, durante el período del proyecto no se alcanzó la cantidad mínima ni la diversidad de fotografías necesarias para realizar un entrenamiento confiable. Utilizar un conjunto demasiado pequeño habría producido resultados poco representativos y un riesgo elevado de sobreajuste. Por ese motivo no se consideró correcto presentar un modelo entrenado con datos insuficientes como una mejora válida del sistema.
+
+\subsection{Proceso de entrenamiento iniciado}
+
+En paralelo con la captura se comenzó a desarrollar el proceso de entrenamiento: preparación y lectura del dataset, asociación de imágenes con sus metadatos y definición del flujo necesario para entrenar y validar los modelos. Esta etapa avanzó a nivel de infraestructura y procedimiento, pero no pudo culminarse porque el dataset todavía no tenía el volumen requerido y el tiempo restante no permitía completar una nueva campaña de adquisición, ejecutar los experimentos y validar los resultados.
+
+Por lo tanto, el único extra priorizado que quedó incompleto fue el entrenamiento o ajuste profundo de modelos específicamente para SmartGate. La versión final utiliza modelos previamente entrenados y umbrales ajustados durante las pruebas. La herramienta de captura y el trabajo inicial del pipeline de entrenamiento constituyen un avance aprovechable para una etapa posterior, pero no se contabilizan como un modelo propio finalizado.
+
+\section{Separación entre MVP y extras}
+
+La tabla~\ref{tab:mvp-extras} resume qué bloques forman parte del MVP y cuáles corresponden a funcionalidades adicionales, junto con el resultado alcanzado en cada uno.
+
+\begin{table}[H]
+    \centering
+    \small
+    \renewcommand{\baselinestretch}{1.15}\selectfont
+    \begin{tabular}{|p{4.0cm}|p{4.0cm}|p{6.1cm}|}
+        \hline
+        \textbf{Bloque} & \textbf{Función dentro del proyecto} & \textbf{Resultado} \\ \hline
+        Pipeline de visión & Detección, antispoofing, reconocimiento y decisión & MVP completado con modelos previamente entrenados. \\ \hline
+        Control físico & Señalización, pulso de apertura y lectura del final de carrera & MVP completado e integrado con el pipeline. \\ \hline
+        Persistencia local básica & Galería disponible para tomar la decisión de acceso & Parte del funcionamiento autónomo del MVP. \\ \hline
+        Supabase e interfaz web & Administración centralizada de usuarios y eventos & Extra implementado. \\ \hline
+        Caché offline y sincronización diferida & Continuidad sin red y envío posterior de eventos & Extra implementado. \\ \hline
+        systemd, telemetría y recuperación & Arranque automático y mayor autonomía operativa & Extra implementado. \\ \hline
+        Captura del dataset & Interfaz local para fotografías y metadatos & Herramienta implementada; dataset insuficiente. \\ \hline
+        Entrenamiento de modelos propios & Adaptación a las condiciones reales de SmartGate & Proceso iniciado, pero no culminado. \\ \hline
+    \end{tabular}
+    \caption{Separación entre el MVP y las funcionalidades adicionales.}
+    \label{tab:mvp-extras}
+\end{table}
+
+\section{Repositorio del proyecto}
+
+Todo el desarrollo correspondiente al núcleo de SmartGate se mantuvo versionado en el repositorio de GitHub del proyecto, disponible en \url{https://github.com/ms282489/SmartGate}. El repositorio permite observar la evolución del sistema a través de los tres prototipos desarrollados, desde las primeras pruebas individuales de los modelos hasta la integración del pipeline, el control físico, la telemetría y la comunicación con la base de datos. También se conserva la documentación utilizada para definir la arquitectura y lógica de funcionamiento, junto con los programas desarrollados para la adquisición de imágenes y generación de datasets.
+
+La obtención de un dataset propio fue más limitada de lo previsto, por lo que en el repositorio se priorizó conservar las herramientas, configuraciones y metodología de captura desarrolladas. Las imágenes obtenidas no se almacenaron directamente en GitHub debido tanto a su volumen como al carácter biométrico de la información. De esta forma, el repositorio documenta el procedimiento utilizado para generar y organizar las muestras sin publicar los datos faciales adquiridos.
+
+La interfaz web de administración constituye la principal parte del desarrollo que no se encuentra almacenada dentro de este repositorio. Esta funcionalidad fue desarrollada de forma desacoplada del software ejecutado en la Raspberry Pi, al tratarse de una prestación complementaria incorporada posteriormente al MVP. La comunicación entre ambos desarrollos se realiza mediante Supabase, que actúa como repositorio central para la información de usuarios, representaciones faciales y registros de acceso. Dentro del repositorio de SmartGate sí se encuentran los módulos implementados en la Raspberry Pi para realizar esta sincronización, pero no el código correspondiente a la interfaz web administrativa.
