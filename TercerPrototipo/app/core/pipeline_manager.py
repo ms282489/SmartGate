@@ -3,6 +3,7 @@
 import time
 from queue import Empty, Queue
 from core.buffers import limpiar_buffers
+from core.metricas import medidor
 from core.states import (
     MensajePipeline,
     PipelineState,
@@ -266,6 +267,8 @@ def ejecutar_pipeline(
             )
             and estado_pipeline is PipelineState.PROCESSING
         ):
+            medidor.marcar("gestor_resultado")
+
             if mensaje is MensajePipeline.SPOOF_DETECTADO:
                 registrar_evento("SPOOF")
 
@@ -315,6 +318,12 @@ def ejecutar_pipeline(
                     texto_resultado = "RESULTADO: RECHAZADO"
 
             signal_rechazado()
+            medidor.marcar("gestor_senal")
+            medidor.cerrar(
+                "spoof"
+                if mensaje is MensajePipeline.SPOOF_DETECTADO
+                else "rechazado"
+            )
             actualizar_vista(
                 vista_camara,
                 texto_resultado,
@@ -341,6 +350,7 @@ def ejecutar_pipeline(
             mensaje is MensajePipeline.IDENTIDAD_AUTORIZADA
             and estado_pipeline is PipelineState.PROCESSING
         ):
+            medidor.marcar("gestor_resultado")
             sincronizacion.detection_enabled.clear()
 
             registrar_evento("APROBADO")
@@ -370,6 +380,7 @@ def ejecutar_pipeline(
             )
 
             signal_aceptado()
+            medidor.marcar("gestor_senal")
 
             if resultado is not None and resultado.similitud is not None:
                 texto_resultado = (
@@ -388,6 +399,8 @@ def ejecutar_pipeline(
             pausa_autorizada_pendiente = True
 
             if modo_solo_camara:
+                # Sin portón no hay pulso: el intento termina con la señal.
+                medidor.cerrar("autorizado")
                 sincronizacion.shutdown.wait(resultado_visible)
                 reactivar_deteccion_en = (
                     time.monotonic() + pausa_autorizado
@@ -405,6 +418,7 @@ def ejecutar_pipeline(
                 else:
                     mostrar_descanso_autorizado(vista_camara)
             else:
+                # El intento se cierra en el worker GPIO, al generar el pulso.
                 signal_abrir_porton()
                 estado_pipeline = PipelineState.WAIT_GATE_OPEN
 
@@ -426,6 +440,7 @@ def ejecutar_pipeline(
 
             # Apertura inesperada mientras el sistema trabajaba
             else:
+                medidor.descartar()
                 estado_pipeline = PipelineState.CLEANING
                 limpiar_pipeline(sincronizacion)
                 estado_pipeline = PipelineState.WAIT_GATE_CLOSE
@@ -458,6 +473,7 @@ def ejecutar_pipeline(
                 mostrar_pausa_seguridad(vista_camara)
 
         elif mensaje is MensajePipeline.ERROR:
+            medidor.descartar()
             estado_pipeline = PipelineState.CLEANING
             limpiar_pipeline(sincronizacion)
             reactivar_deteccion_en = extender_pausa(

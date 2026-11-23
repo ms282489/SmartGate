@@ -7,6 +7,7 @@ import cv2
 
 from core.buffers import guardar_muestras
 from core.camara import crear_camara
+from core.metricas import ahora as reloj, medidor
 from core.states import MensajePipeline
 
 
@@ -190,6 +191,7 @@ def deteccion_worker(
     while not sincronizacion.shutdown.is_set():
         try:
             lectura_correcta, imagen = camara.read()
+            t_captura = reloj()
 
             if not lectura_correcta:
                 raise RuntimeError(
@@ -240,7 +242,14 @@ def deteccion_worker(
                 )
             )
 
+            t_deteccion_inicio = reloj()
             resultado, rostros = detector.detect(imagen_detector)
+            t_deteccion_fin = reloj()
+            medidor.registrar_deteccion(
+                t_deteccion_fin - t_deteccion_inicio,
+                rostros is not None and len(rostros) > 0,
+                control_cadencia.en_descanso,
+            )
 
             if rostros is None or len(rostros) == 0:
                 control_cadencia.registrar_sin_rostro(
@@ -324,6 +333,20 @@ def deteccion_worker(
                     imagen.copy(),
                     rostro_detectado.copy(),
                 ),
+            )
+
+            # Las marcas se registran antes de despertar al antispoofing para
+            # que el intento ya exista cuando Modelo 2 anote las suyas.
+            medidor.nuevo_intento(
+                {
+                    "captura": t_captura,
+                    "deteccion_inicio": t_deteccion_inicio,
+                    "deteccion_fin": t_deteccion_fin,
+                    "muestras_listas": reloj(),
+                }
+            )
+            medidor.anotar(
+                puntaje_deteccion=sincronizacion.detection_score,
             )
 
             # Avisar al pipeline antes de iniciar antispoofing

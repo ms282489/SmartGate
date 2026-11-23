@@ -5,6 +5,7 @@ from pathlib import Path
 import cv2
 
 from core.buffers import tomar_buffer2
+from core.metricas import medidor
 from core.states import MensajePipeline, ResultadoPipeline
 from Tareas.reconocimiento.galeria import (
     galeria_compartida,
@@ -62,15 +63,18 @@ def reconocimiento_worker(
 
         try:
             imagen, rostro_detectado = tomar_buffer2()
+            medidor.marcar("reconocimiento_inicio")
             sincronizacion.recognition_ready.clear()
 
             rostro_alineado = reconocedor.alignCrop(
                 imagen,
                 rostro_detectado,
             )
+            medidor.marcar("reconocimiento_alineado")
             embedding_actual = reconocedor.feature(
                 rostro_alineado
             )
+            medidor.marcar("reconocimiento_embedding")
             personas_autorizadas = galeria_compartida.obtener()
 
             mejor_persona = None
@@ -89,6 +93,16 @@ def reconocimiento_worker(
                 ):
                     mejor_similitud = similitud
                     mejor_persona = persona
+
+            medidor.marcar("reconocimiento_fin")
+            medidor.anotar(
+                similitud=(
+                    float(mejor_similitud)
+                    if mejor_similitud is not None
+                    else None
+                ),
+                personas_en_galeria=len(personas_autorizadas),
+            )
 
             if (
                 mejor_persona is not None

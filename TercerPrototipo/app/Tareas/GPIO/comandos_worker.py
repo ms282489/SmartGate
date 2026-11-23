@@ -3,6 +3,7 @@ from queue import Empty
 
 import gpiod
 
+from core.metricas import medidor
 from Tareas.GPIO.gpio_comandos import gpio_comando_queue
 
 
@@ -84,6 +85,9 @@ def command_worker(
             # Mantener el comportamiento previo y no cambiar el patrón visual.
             try:
                 output_request.set_value(pin_abrir, gpiod.line.Value.ACTIVE)
+                # Instante en que la central recibe la orden de apertura.
+                medidor.marcar("pulso_apertura")
+                medidor.cerrar("autorizado")
                 time.sleep(pulse_tiempo / 1000)
             finally:
                 output_request.set_value(pin_abrir, gpiod.line.Value.INACTIVE)

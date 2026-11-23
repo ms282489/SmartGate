@@ -17,6 +17,7 @@ pruebas = [
     "probar_pipeline.py",
     "probar_vista_camara.py",
     "probar_telemetria.py",
+    "probar_metricas.py",
 ]
 
 entorno = os.environ.copy()

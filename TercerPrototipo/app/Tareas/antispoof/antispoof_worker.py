@@ -7,6 +7,7 @@ import numpy as np
 
 from core.buffers import tomar_buffer1
 from core.buffers import tomar_buffer2
+from core.metricas import medidor
 from core.states import MensajePipeline, ResultadoPipeline
 
 
@@ -53,6 +54,7 @@ def antispoof_worker(
         try:
             # Tomar y vaciar Buffer 1
             rostro = tomar_buffer1()
+            medidor.marcar("antispoof_inicio")
             sincronizacion.buffer1_ready.clear()
 
             # Preparar la imagen para el modelo
@@ -67,8 +69,10 @@ def antispoof_worker(
             )
 
             # Ejecutar el modelo
+            medidor.marcar("antispoof_inferencia_inicio")
             modelo.setInput(entrada)
             salida = modelo.forward()[0]
+            medidor.marcar("antispoof_inferencia_fin")
 
             # Convertir la salida en probabilidades
             valores = np.exp(salida - np.max(salida))
@@ -77,12 +81,16 @@ def antispoof_worker(
             puntaje_real = float(probabilidades[1])
             sincronizacion.antispoof_score = puntaje_real
             aprobado = puntaje_real >= umbral_antispoof
+            medidor.anotar(puntaje_antispoof=puntaje_real)
 
             if vista_camara is not None:
                 vista_camara.actualizar_antispoof(
                     puntaje_real,
                     aprobado,
                 )
+
+            # Marcar antes de despertar al reconocimiento o avisar al gestor.
+            medidor.marcar("antispoof_fin")
 
             if aprobado:
                 sincronizacion.recognition_ready.set()

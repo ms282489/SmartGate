@@ -5,6 +5,7 @@ from threading import Thread
 
 import yaml
 
+from core.metricas import medidor
 from core.pipeline_manager import ejecutar_pipeline
 from core.sync import create_synchronization
 from core.states import MensajePipeline
@@ -40,6 +41,9 @@ RUTA_CONFIG = CARPETA_PROYECTO / "config" / "config.yaml"
 # Leer la configuración
 with RUTA_CONFIG.open("r", encoding="utf-8") as archivo:
     config = yaml.safe_load(archivo)
+
+# Medición opcional de tiempos del pipeline (sección `metricas`).
+medidor.configurar(config)
 
 
 # Cargar la última galería persistente antes de iniciar cualquier hilo. Así el
@@ -202,3 +206,6 @@ reconocimiento_thread.join()
 telemetria_thread.join()
 supabase_thread.join()
 galeria_thread.join()
+
+# Guardar las mediciones de YuNet que todavía estén en memoria.
+medidor.cerrar_archivos()
