@@ -6,8 +6,8 @@ generan con `metricas.habilitadas: true` en config/config.yaml.
 
 Uso, desde la carpeta TercerPrototipo:
 
-    python3 herramientas/resumen_tiempos.py
-    python3 herramientas/resumen_tiempos.py --markdown data/metricas/resumen.md
+    python3 test/resumen_tiempos.py
+    python3 test/resumen_tiempos.py --markdown data/metricas/resumen.md
 """
 
 import argparse

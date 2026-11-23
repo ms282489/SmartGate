@@ -103,7 +103,7 @@ telemetry:
 # Medición de tiempos del pipeline. Con true, cada intento de acceso se guarda
 # en data/metricas/tiempos_pipeline.csv (duración de cada etapa y de cada
 # traspaso entre hilos) y cada inferencia de YuNet en tiempos_deteccion.csv.
-# Resumen: python3 herramientas/resumen_tiempos.py
+# Resumen: python3 test/resumen_tiempos.py
 metricas:
   habilitadas: false
   carpeta: "data/metricas"

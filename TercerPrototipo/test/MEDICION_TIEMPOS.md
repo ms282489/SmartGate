@@ -16,13 +16,13 @@ no se sube al repositorio.
 Con la cámara (una persona debe quedarse frente a ella durante la medición):
 
 ```bash
-python3 herramientas/medir_inferencia.py --fuente camara --repeticiones 200
+python3 test/medir_inferencia.py --fuente camara --repeticiones 200
 ```
 
 Con una fotografía que contenga un rostro (no necesita la cámara):
 
 ```bash
-python3 herramientas/medir_inferencia.py --fuente imagen --imagen foto.jpg --repeticiones 200
+python3 test/medir_inferencia.py --fuente imagen --imagen foto.jpg --repeticiones 200
 ```
 
 Opciones:
@@ -61,8 +61,8 @@ systemctl --user stop smartgate.service
 3. Ver el resumen:
 
    ```bash
-   python3 herramientas/resumen_tiempos.py
-   python3 herramientas/resumen_tiempos.py --markdown data/metricas/resumen.md
+   python3 test/resumen_tiempos.py
+   python3 test/resumen_tiempos.py --markdown data/metricas/resumen.md
    ```
 
 4. Volver a `habilitadas: false` al terminar.

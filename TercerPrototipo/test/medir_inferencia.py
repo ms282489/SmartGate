@@ -8,10 +8,10 @@ modelo en el hardware y justificar la elección de la placa.
 Uso, desde la carpeta TercerPrototipo:
 
     # Con la cámara (una persona debe estar frente a ella):
-    python3 herramientas/medir_inferencia.py --fuente camara
+    python3 test/medir_inferencia.py --fuente camara
 
     # Con una fotografía que contenga un rostro (no necesita cámara):
-    python3 herramientas/medir_inferencia.py --fuente imagen --imagen foto.jpg
+    python3 test/medir_inferencia.py --fuente imagen --imagen foto.jpg
 
 Opciones útiles: --repeticiones 200, --personas 100 (galería simulada),
 --deteccion-completa (mide también YuNet a la resolución completa).
