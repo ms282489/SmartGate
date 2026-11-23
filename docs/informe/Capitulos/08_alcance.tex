@@ -1,0 +1,19 @@
+\chapter{Alcance, limitaciones y trabajo futuro}
+
+\section{Alcance actual y limitaciones}
+
+El prototipo demuestra que es posible integrar visión artificial, procesamiento local, control físico y servicios remotos en una plataforma de costo moderado. También demuestra continuidad operativa ante interrupciones temporales de Internet y la posibilidad de administrar los usuarios desde una interfaz independiente de la Raspberry Pi.
+
+La limitación práctica más visible se encuentra en la adquisición de imagen. La cámara utilizada permite validar el sistema a corta distancia, pero cuando la persona se aleja el rostro ocupa pocos píxeles. En esas condiciones la detección y la extracción de características se vuelven menos estables, por lo que actualmente el usuario debe aproximarse para ser reconocido. La iluminación, el contraluz, el ángulo de montaje y el movimiento también influyen en las etapas posteriores.
+
+Esta limitación no depende únicamente del modelo. Un entrenamiento adaptado puede aumentar la robustez, pero no puede recuperar información que la cámara no capturó. Por ello, el sistema todavía debe considerarse un prototipo funcional y no una solución de seguridad definitiva. Antes de un despliegue continuo sería necesario ampliar las pruebas, medir falsas aceptaciones y falsos rechazos, reforzar la protección de credenciales y datos biométricos y definir procedimientos de mantenimiento y contingencia.
+
+\section{Alcance potencial y trabajo futuro}
+
+El siguiente paso natural es completar el dataset mediante la herramienta ya desarrollada. La campaña de captura debería incluir una cantidad suficiente de personas y variaciones de iluminación, distancia, orientación, expresión, accesorios y posibles ataques de suplantación. Con esos datos podría retomarse el pipeline de entrenamiento, separar conjuntos de entrenamiento y validación y calibrar los umbrales con métricas objetivas.
+
+En el hardware podría incorporarse una cámara con mayor resolución efectiva sobre el rostro, mejor comportamiento con poca luz o una óptica adecuada a la distancia de operación. Una iluminación frontal controlada y una ubicación de montaje correctamente estudiada también permitirían detectar al usuario desde una posición más cómoda. Si se requiriera mayor velocidad, modelos más complejos o varias cámaras, podría añadirse aceleración dedicada para inferencia o una plataforma de procesamiento de mayores prestaciones.
+
+La arquitectura de datos permite ampliar el proyecto hacia permisos por horario, diferentes niveles de autorización, múltiples puntos de acceso, auditoría centralizada y supervisión remota. La interfaz web podría incorporar estadísticas, alertas y herramientas de diagnóstico. Estas ampliaciones deberían acompañarse de políticas de acceso, cifrado, copias de seguridad y protección específica de los datos biométricos.
+
+En síntesis, el desarrollo escalonado permitió completar el MVP y la mayor parte de los extras operativos. El único objetivo adicional no culminado fue el entrenamiento de modelos propios: se construyó la herramienta de captura, se inició la recolección del dataset y se comenzó el proceso de entrenamiento, pero no se alcanzaron los datos ni el tiempo necesarios para obtener y validar un modelo confiable. Este trabajo deja una base concreta para continuar la evolución de SmartGate sin modificar la arquitectura principal.

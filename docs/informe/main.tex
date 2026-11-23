@@ -1,0 +1,111 @@
+% ------------------------------------------------------------
+% SmartGate - Proyecto integrador 3
+% Versión reordenada del informe. Compilar con XeLaTeX o LuaLaTeX
+% (usa fontspec).
+% ------------------------------------------------------------
+
+\documentclass[a4paper,12pt]{report}
+\usepackage{fontspec}
+\usepackage[spanish,es-tabla,es-noshorthands]{babel}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{indentfirst}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{array}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+
+% Numero de pagina a la derecha
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[R]{\thepage}
+\pagestyle{fancy}
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \renewcommand{\headrulewidth}{0pt}
+  \fancyfoot[R]{\thepage}
+}
+
+% Eliminar titulo de capitulo por defecto
+\titleformat{\chapter}[display]
+{\normalfont\bfseries}{}{0pt}{\Huge}
+
+\titleformat{\subsection}
+{\normalfont\large\bfseries}{\hspace{2em}\thesubsection}{1em}{}
+
+% Disminuir margen de titulo
+\titlespacing*{\chapter}{0pt}{-50pt}{0pt}
+\titlespacing*{\section}{0pt}{0pt}{0pt}
+\titlespacing*{\subsection}{0pt}{0pt}{0pt}
+
+% Normas de párrafos
+\renewcommand{\baselinestretch}{1.5}
+\setlength{\parskip}{12pt}
+
+% Margenes de documento
+\newgeometry{
+    top=2.5cm,
+    bottom=2.5cm,
+    outer=2.5cm,
+    inner=2.5cm,
+    includefoot,
+    footskip=1.5cm
+}
+
+% Estilos comunes para los diagramas de bloques
+\tikzset{
+    caja/.style={rectangle, draw=black, align=center, text width=8.5cm, inner sep=6pt, font=\normalsize},
+    cajachica/.style={rectangle, draw=black, align=center, text width=4.6cm, inner sep=6pt, font=\normalsize},
+    flecha/.style={-{Stealth}, thick},
+    dflecha/.style={{Stealth}-{Stealth}, thick},
+    etiqueta/.style={font=\footnotesize, align=center, fill=white, inner sep=2pt}
+}
+
+\hyphenation{e-jem-plo es-pe-ci-fí-cas ge-ne-ra-ti-va com-pues-ta par-ti-cu-lar cus-to-mi-za-ble de-sa-rro-llar res-pon-de-rá di-fe-ren-tes co-rres-pon-dien-te au-to-ma-ti-za-da se-pa-ra-da se-pa-ran-do per-te-ne-cien-tes es-ca-la-bles se-pa-rar}
+
+\begin{document}
+
+\include{Portada}
+
+\tableofcontents
+
+\include{Capitulos/01_descripcion_general}
+\include{Capitulos/02_interfaz_porton}
+\include{Capitulos/03_modelos}
+\include{Capitulos/04_programa_raspberry}
+\include{Capitulos/05_datos_offline}
+\include{Capitulos/06_desarrollo_resultados}
+\include{Capitulos/07_planificacion}
+\include{Capitulos/08_alcance}
+\include{Capitulos/09_conclusion}
+
+\begin{thebibliography}{9}
+
+\bibitem{ppa-triflex} PPA -- Motoppar Indústria e Comércio de Automatizadores Ltda., \textit{Central Triflex Facility -- Manual Técnico}, Rev. 4, P05634, 2022. Documentación técnica de la central, conexiones de botonera, alimentación auxiliar y sensores reed de final de carrera.
+
+\bibitem{ppa-pop} PPA -- Motoppar Indústria e Comércio de Automatizadores Ltda., \textit{Central Agility Pop Connect -- Manual de instrucciones}. Documentación técnica de la central, entrada de botonera, final de carrera analógico y fuente interna de 12~V.
+
+\bibitem{seg-wave} SEG, \textit{Central Wave -- Manual de instrucciones}. Documentación de entradas de botonera, finales de carrera, función condominio y salida auxiliar de 12~V.
+
+\bibitem{seg-g2} SEG, \textit{Central G-II Mono -- Manual de Instalación}, versión 2.3. Documentación de botoneras, finales de carrera y salida auxiliar de 12~Vcc/400~mA no regulada.
+
+\bibitem{seg-solo} SEG, \textit{Solo CH -- Manual de Instalación}. Documentación del automatizador y utilización de sensores magnéticos reed normalmente abiertos para los finales de carrera.
+
+\bibitem{yunet} W. Wu, H. Peng y S. Yu, \textit{YuNet: A Tiny Millisecond-level Face Detector}, Machine Intelligence Research, vol. 20, pp. 656--665, 2023. Descripción de la arquitectura YuNet y su aplicación en sistemas con recursos computacionales limitados.
+
+\bibitem{opencv} OpenCV, \textit{DNN-based Face Detection and Recognition}. Documentación de los modelos YuNet y SFace, detección facial, puntos de referencia, alineamiento, extracción de características y comparación mediante similitud coseno y distancia L2.
+
+\bibitem{minivision} MiniVision AI, \textit{Silent-Face-Anti-Spoofing}. Implementación de MiniFASNetV2 para la detección de ataques de suplantación facial y clasificación de muestras reales y falsas.
+
+\bibitem{cdcn} Z. Yu et al., \textit{Searching Central Difference Convolutional Networks for Face Anti-Spoofing}, IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2020.
+
+\end{thebibliography}
+
+\end{document}
