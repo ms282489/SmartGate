@@ -130,8 +130,3 @@ Genera `resultados/hardware_<fecha>/hardware.csv` con todas las muestras y
 `resumen_hardware.json` con la media, el P95, el mínimo y el máximo de cada
 variable. Los resultados de la prueba de 391 s están en la sección
 "Monitoreo de recursos de la Raspberry Pi" del informe.
-
-Nota: la columna `smartgate_cpu_pct_one_core` sale siempre en 0, porque el
-script crea objetos de proceso nuevos en cada muestra y la primera lectura de
-`cpu_percent` de psutil siempre es 0. Para el uso de CPU conviene usar las
-columnas de CPU total y por núcleo.
