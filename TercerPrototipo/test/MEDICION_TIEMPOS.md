@@ -109,3 +109,29 @@ El total empieza cuando la cámara entrega el cuadro al programa. No incluye:
 
 Para documentar la experiencia del usuario, conviene informar el total junto
 con estas aclaraciones.
+
+## 3. Monitoreo de recursos de la placa
+
+`monitor_hardware.py` registra, en paralelo a SmartGate y sin modificarlo, el
+uso de CPU total y por núcleo, la frecuencia, la temperatura del SoC, las
+banderas de *throttling* (`vcgencmd get_throttled`), la RAM, la memoria de
+intercambio y la memoria e hilos del proceso de SmartGate. Necesita `psutil`
+(`python3 -m pip install psutil`).
+
+```bash
+# PID del proceso principal de SmartGate
+pgrep -f "app/main.py"
+
+# Muestras cada 0,5 s durante 6 minutos (Ctrl+C también lo detiene)
+python3 test/monitor_hardware.py --pid <PID> --interval 0.5 --duration 360
+```
+
+Genera `resultados/hardware_<fecha>/hardware.csv` con todas las muestras y
+`resumen_hardware.json` con la media, el P95, el mínimo y el máximo de cada
+variable. Los resultados de la prueba de 391 s están en la sección
+"Monitoreo de recursos de la Raspberry Pi" del informe.
+
+Nota: la columna `smartgate_cpu_pct_one_core` sale siempre en 0, porque el
+script crea objetos de proceso nuevos en cada muestra y la primera lectura de
+`cpu_percent` de psutil siempre es 0. Para el uso de CPU conviene usar las
+columnas de CPU total y por núcleo.
